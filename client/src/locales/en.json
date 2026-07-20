@@ -2547,6 +2547,8 @@
         "koreader": "KOReader",
         "manual": "Manual",
         "kobo": "Kobo",
+        "crosspoint": "Crosspoint",
+        "audiobookshelf": "Audiobookshelf",
         "unknown": "Unknown"
       },
       "formats": "Formats",

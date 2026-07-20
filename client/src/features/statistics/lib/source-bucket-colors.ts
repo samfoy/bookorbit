@@ -1,12 +1,14 @@
 import { oklchToHex, readCssColor } from '@/lib/echarts'
 import type { ReadingSessionSourceBucket } from '@bookorbit/types'
 
-// The 3 reading-source buckets reuse the existing pill tokens (light + dark variants
+// The reading-source buckets reuse the existing pill tokens (light + dark variants
 // live in client/src/assets/theme/tokens.css). bookorbit shares the "web" hue.
 export const SOURCE_BUCKET_COLOR_TOKENS: Record<ReadingSessionSourceBucket, string> = {
   bookorbit: '--pill-web',
   koreader: '--pill-koreader',
   kobo: '--pill-kobo',
+  crosspoint: '--pill-crosspoint',
+  audiobookshelf: '--pill-audiobookshelf',
 }
 
 const cache = new Map<string, Record<ReadingSessionSourceBucket, string>>()
@@ -41,6 +43,8 @@ export function resolveSourceBucketColors(themeKey: string): Record<ReadingSessi
     bookorbit: toParseableColor(readCssColor(SOURCE_BUCKET_COLOR_TOKENS.bookorbit)),
     koreader: toParseableColor(readCssColor(SOURCE_BUCKET_COLOR_TOKENS.koreader)),
     kobo: toParseableColor(readCssColor(SOURCE_BUCKET_COLOR_TOKENS.kobo)),
+    crosspoint: toParseableColor(readCssColor(SOURCE_BUCKET_COLOR_TOKENS.crosspoint)),
+    audiobookshelf: toParseableColor(readCssColor(SOURCE_BUCKET_COLOR_TOKENS.audiobookshelf)),
   }
   cache.set(themeKey, colors)
   return colors

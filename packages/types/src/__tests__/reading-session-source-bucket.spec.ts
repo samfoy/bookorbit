@@ -24,6 +24,14 @@ describe("toReadingSessionSourceBucket", () => {
     expect(toReadingSessionSourceBucket("kobo")).toBe("kobo");
   });
 
+  it("maps crosspoint to crosspoint", () => {
+    expect(toReadingSessionSourceBucket("crosspoint")).toBe("crosspoint");
+  });
+
+  it("maps audiobookshelf to audiobookshelf", () => {
+    expect(toReadingSessionSourceBucket("audiobookshelf")).toBe("audiobookshelf");
+  });
+
   it("maps null/undefined to bookorbit", () => {
     expect(toReadingSessionSourceBucket(null)).toBe("bookorbit");
     expect(toReadingSessionSourceBucket(undefined)).toBe("bookorbit");
@@ -31,8 +39,8 @@ describe("toReadingSessionSourceBucket", () => {
 });
 
 describe("reading session source bucket constants", () => {
-  it("exposes exactly three buckets", () => {
-    expect(READING_SESSION_SOURCE_BUCKETS).toEqual(["bookorbit", "koreader", "kobo"]);
+  it("exposes exactly five buckets", () => {
+    expect(READING_SESSION_SOURCE_BUCKETS).toEqual(["bookorbit", "koreader", "kobo", "crosspoint", "audiobookshelf"]);
   });
 
   it("labels every bucket", () => {
@@ -40,10 +48,12 @@ describe("reading session source bucket constants", () => {
       bookorbit: "BookOrbit",
       koreader: "KOReader",
       kobo: "Kobo",
+      crosspoint: "Crosspoint",
+      audiobookshelf: "Audiobookshelf",
     });
   });
 
   it("builds a zero-filled record", () => {
-    expect(emptySourceBucketRecord()).toEqual({ bookorbit: 0, koreader: 0, kobo: 0 });
+    expect(emptySourceBucketRecord()).toEqual({ bookorbit: 0, koreader: 0, kobo: 0, crosspoint: 0, audiobookshelf: 0 });
   });
 });
