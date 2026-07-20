@@ -6,6 +6,7 @@ import {
   clusterPageStats,
   computeClusterMetrics,
   deriveKoreaderSessions,
+  resolveDeviceSource,
   type KoreaderPageEvent,
 } from './koreader-stats.util';
 
@@ -113,5 +114,21 @@ describe('deriveKoreaderSessions', () => {
 
   it('builds a prefix that scopes ids per device and file', () => {
     expect(buildSessionIdPrefix(DEVICE_ID, FILE_ID)).toBe('kor:abcdef12:42:');
+  });
+});
+
+describe('resolveDeviceSource', () => {
+  it('maps Crosspoint/CrossInk device models to the crosspoint source', () => {
+    expect(resolveDeviceSource('Crosspoint X3')).toBe('crosspoint');
+    expect(resolveDeviceSource('CrossInk X4')).toBe('crosspoint');
+    expect(resolveDeviceSource('xteink crosspoint')).toBe('crosspoint');
+  });
+
+  it('falls back to koreader for other device models', () => {
+    expect(resolveDeviceSource('Kobo Libra 2')).toBe('koreader');
+    expect(resolveDeviceSource('KOReader')).toBe('koreader');
+    expect(resolveDeviceSource('')).toBe('koreader');
+    expect(resolveDeviceSource(null)).toBe('koreader');
+    expect(resolveDeviceSource(undefined)).toBe('koreader');
   });
 });

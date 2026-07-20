@@ -1,8 +1,21 @@
+import type { ReadingSessionSource } from '@bookorbit/types';
+
 export const KOREADER_SESSION_GAP_SECONDS = 1800;
 /** Upper bound accepted for a single page event, used to bound backward window scans. */
 export const KOREADER_MAX_EVENT_DURATION_SECONDS = 86400;
 export const KOREADER_MIN_SESSION_SECONDS = 10;
 export const KOREADER_BACKFILL_EVENT_THRESHOLD = 20;
+
+// Map a page-stats uploader's self-reported deviceModel to a reading-session source.
+// Crosspoint/CrossInk firmware (Xteink X3/X4) speaks the same KOReader page-stats
+// protocol as the official plugin, so it arrives on the /koreader/plugin/page-stats
+// endpoint; we distinguish it by deviceModel so the Reading Log can badge it as its
+// own source rather than a generic "KOReader". Anything else stays 'koreader'.
+export function resolveDeviceSource(deviceModel: string | null | undefined): ReadingSessionSource {
+  const model = (deviceModel ?? '').toLowerCase();
+  if (model.includes('crosspoint') || model.includes('crossink')) return 'crosspoint';
+  return 'koreader';
+}
 
 export interface KoreaderPageEvent {
   page: number;

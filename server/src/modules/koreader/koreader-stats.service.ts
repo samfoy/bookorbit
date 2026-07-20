@@ -75,6 +75,7 @@ export class KoreaderStatsService {
           bookId: match.bookId,
           libraryId: match.libraryId,
           deviceId: dto.deviceId,
+          deviceModel: dto.deviceModel,
           events: book.events,
           timeZone,
         });

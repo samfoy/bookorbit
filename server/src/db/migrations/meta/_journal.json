@@ -442,6 +442,13 @@
       "when": 1785712608966,
       "tag": "0062_add_series_expected_book_count",
       "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1785961185744,
+      "tag": "0063_crosspoint_audiobookshelf_sources",
+      "breakpoints": true
     }
   ]
 }

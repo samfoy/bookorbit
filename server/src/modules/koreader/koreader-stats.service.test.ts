@@ -86,6 +86,7 @@ describe('KoreaderStatsService', () => {
       bookId: 20,
       libraryId: 1,
       deviceId: DEVICE_ID,
+      deviceModel: 'Kobo Libra 2',
       events: dto.books[0]!.events,
       timeZone: 'Asia/Kolkata',
     });
