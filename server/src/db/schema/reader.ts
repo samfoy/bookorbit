@@ -202,8 +202,9 @@ export const readingSessions = pgTable(
     attemptId: integer('attempt_id').references(() => readingAttempts.id, { onDelete: 'set null' }),
     // Client-generated UUID; used for idempotent retries.
     sessionId: varchar('session_id', { length: 64 }).notNull(),
-    // 'web' (browser reader) | 'koreader' (page-stats derivation) | 'manual' (user-entered) | 'kobo' (future)
-    source: varchar('source', { length: 10 }).$type<ReadingSessionSource>(),
+    // 'web' (browser reader) | 'koreader' (page-stats derivation) | 'manual' (user-entered) | 'kobo'
+    // | 'crosspoint' (Crosspoint/CrossInk X3/X4 page-stats) | 'audiobookshelf' (readsync audiobook listening import)
+    source: varchar('source', { length: 20 }).$type<ReadingSessionSource>(),
     startedAt: timestamp('started_at', { withTimezone: true }).notNull(),
     endedAt: timestamp('ended_at', { withTimezone: true }).notNull(),
     // Server-computed from endedAt - startedAt; client-provided timestamps are untrusted for duration.
@@ -220,7 +221,7 @@ export const readingSessions = pgTable(
     index('rs_user_book_started_at_idx').on(t.userId, t.bookId, t.startedAt),
     index('reading_sessions_book_id_idx').on(t.bookId),
     index('rs_attempt_started_at_idx').on(t.attemptId, t.startedAt),
-    check('reading_sessions_source_chk', sql`${t.source} in ('web', 'koreader', 'manual', 'kobo')`),
+    check('reading_sessions_source_chk', sql`${t.source} in ('web', 'koreader', 'manual', 'kobo', 'crosspoint', 'audiobookshelf')`),
     check('reading_sessions_duration_seconds_nonnegative_chk', sql`${t.durationSeconds} >= 0`),
     check('reading_sessions_end_progress_range_chk', sql`${t.endProgress} is null or (${t.endProgress} >= 0 and ${t.endProgress} <= 100)`),
     check('reading_sessions_ended_after_started_chk', sql`${t.endedAt} >= ${t.startedAt}`),

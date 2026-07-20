@@ -2237,7 +2237,7 @@
       "emptyTitle": "No reading activity in this period",
       "noData": "No recorded reading data for this period.",
       "sessionCount": "{count} session | {count} sessions",
-      "sourceNames": { "web": "Web reader", "koreader": "KOReader", "manual": "Manual", "kobo": "Kobo", "unknown": "Unknown" },
+      "sourceNames": { "web": "Web reader", "koreader": "KOReader", "manual": "Manual", "kobo": "Kobo", "crosspoint": "Crosspoint", "audiobookshelf": "Audiobookshelf", "unknown": "Unknown" },
       "formats": "Formats",
       "genres": "Genres",
       "broadGenres": {

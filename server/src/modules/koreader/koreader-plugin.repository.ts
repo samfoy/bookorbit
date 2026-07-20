@@ -10,7 +10,7 @@ import {
   getReadingSessionDayKeys,
   type ReadingDailyStatsSegment,
 } from '../../common/utils/reading-daily-stats.utils';
-import { buildSessionIdPrefix, deriveKoreaderSessions, type DerivedKoreaderSession, type KoreaderPageEvent } from './koreader-stats.util';
+import { buildSessionIdPrefix, deriveKoreaderSessions, resolveDeviceSource, type DerivedKoreaderSession, type KoreaderPageEvent } from './koreader-stats.util';
 
 type Db = NodePgDatabase<typeof schema>;
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
@@ -33,10 +33,14 @@ export class KoreaderPluginRepository {
     bookId: number;
     libraryId: number;
     deviceId: string;
+    deviceModel?: string | null;
     events: KoreaderPageEvent[];
     timeZone: string;
   }): Promise<IngestPageStatsResult> {
-    const { userId, bookFileId, bookId, libraryId, deviceId, events, timeZone } = params;
+    const { userId, bookFileId, bookId, libraryId, deviceId, deviceModel, events, timeZone } = params;
+    // Distinguish Crosspoint/CrossInk devices from generic KOReader by their reported model,
+    // so the derived reading sessions carry a 'crosspoint' source badge.
+    const source = resolveDeviceSource(deviceModel);
 
     return this.db.transaction(async (tx) => {
       const inserted = await tx
@@ -144,7 +148,7 @@ export class KoreaderPluginRepository {
               bookId,
               attemptId: sql`(select id from reading_attempts where user_id = ${userId} and book_id = ${bookId} and outcome is null and deleted_at is null limit 1)`,
               sessionId: session.sessionId,
-              source: 'koreader' as const,
+              source,
               startedAt: session.startedAt,
               endedAt: session.endedAt,
               durationSeconds: session.durationSeconds,
