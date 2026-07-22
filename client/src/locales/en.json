@@ -4535,6 +4535,7 @@
     },
     "sidebar": {
       "dashboard": "Dashboard",
+      "dailyReading": "Daily Reading",
       "authors": "Authors",
       "series": "Series",
       "tools": "Tools",
@@ -6326,6 +6327,28 @@
     }
   },
   "statistics": {
+    "dailyReading": {
+      "title": "Daily Reading",
+      "subtitle": "Time spent reading each day, across every book",
+      "rangeDays": "{count}d",
+      "totalTime": "Total time",
+      "activeDays": "Active days",
+      "activeDaysValue": "{active} of {total}",
+      "avgPerActiveDay": "Avg per active day",
+      "currentStreak": "Current streak",
+      "streakValue": "no days | {count} day | {count} days",
+      "chartTitle": "Reading time per day",
+      "byBookTitle": "Time by book",
+      "otherBooks": "Other ({count} books)",
+      "unknownBook": "Unknown book",
+      "tooltipTotal": "Total",
+      "yAxisMinutes": "min",
+      "minutesShort": "{minutes}m",
+      "hoursShort": "{hours}h",
+      "hoursMinutesShort": "{hours}h {minutes}m",
+      "emptyTitle": "No reading activity yet",
+      "emptyDescription": "Reading sessions from the web reader, KOReader, Crosspoint, and Audiobookshelf will show up here."
+    },
     "tabs": {
       "library": "Library Stats",
       "user": "My Reading"
@@ -6952,6 +6975,7 @@
     "annotations": "Annotations",
     "achievements": "Achievements",
     "statistics": "Statistics",
+    "dailyReading": "Daily Reading",
     "authors": "Authors",
     "series": "Series",
     "entityManager": "Entity Manager",

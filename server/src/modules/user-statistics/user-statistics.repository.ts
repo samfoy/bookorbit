@@ -6,6 +6,7 @@ import type {
   ChordDiagramData,
   ReadingSessionSource,
   UserCompletionTimelinePoint,
+  UserDailyBookReadingStat,
   UserDailyReadingStat,
   UserProgressFunnel,
   UserReadingPacePoint,
@@ -629,6 +630,33 @@ export class UserStatisticsRepository {
       .innerJoin(books, eq(books.id, readingSessions.bookId))
       .where(and(eq(readingSessions.userId, userId), gte(readingSessions.startedAt, since), libraryFilter))
       .groupBy(dayExpr, readingSessions.source);
+  }
+
+  async getDailyReadingSecondsByBook(
+    userId: number,
+    isSuperuser: boolean,
+    filterLibraryIds: number[] | undefined,
+    days: number,
+  ): Promise<UserDailyBookReadingStat[]> {
+    const accessible = await this.getAccessibleLibraryIds(userId, isSuperuser);
+    const libraryFilter = this.libraryFilter(this.intersectLibraryIds(accessible, filterLibraryIds));
+    const since = this.sinceDateForDays(days);
+    const dayExpr = sql<string>`date_trunc('day', ${readingSessions.startedAt})::date::text`;
+
+    return this.db
+      .select({
+        day: dayExpr,
+        bookId: readingSessions.bookId,
+        bookTitle: bookMetadata.title,
+        readingSeconds: sql<number>`coalesce(sum(${readingSessions.durationSeconds}), 0)::int`,
+        sessionsCount: sql<number>`count(*)::int`,
+      })
+      .from(readingSessions)
+      .innerJoin(books, eq(books.id, readingSessions.bookId))
+      .leftJoin(bookMetadata, eq(bookMetadata.bookId, readingSessions.bookId))
+      .where(and(eq(readingSessions.userId, userId), gte(readingSessions.startedAt, since), libraryFilter))
+      .groupBy(dayExpr, readingSessions.bookId, bookMetadata.title)
+      .orderBy(dayExpr, readingSessions.bookId);
   }
 
   async getReadingPacePoints(userId: number, isSuperuser: boolean, filterLibraryIds?: number[], days = 1825): Promise<UserReadingPacePoint[]> {

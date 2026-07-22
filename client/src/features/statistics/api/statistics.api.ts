@@ -11,6 +11,7 @@ import type {
   UserGoalTrajectory,
   StatisticsSummary,
   UserCompletionTimelinePoint,
+  UserDailyBookReadingStat,
   UserDailyReadingStat,
   UserFavoriteDayStat,
   UserProgressFunnelComparison,
@@ -136,6 +137,14 @@ export async function fetchUserReadingHeatmap(filters: StatisticsFilterConfig): 
   const res = await api(`/api/v1/user-statistics/reading-heatmap${buildParams(filters, { days })}`)
   if (!res.ok) throw new Error(`User reading heatmap request failed: ${res.status}`)
   return res.json() as Promise<UserDailyReadingStat[]>
+}
+
+export async function fetchUserDailyReadingByBook(days: number): Promise<UserDailyBookReadingStat[]> {
+  const params = new URLSearchParams()
+  params.set('days', String(days))
+  const res = await api(`/api/v1/user-statistics/daily-reading-by-book?${params.toString()}`)
+  if (!res.ok) throw new Error(`User daily reading by book request failed: ${res.status}`)
+  return res.json() as Promise<UserDailyBookReadingStat[]>
 }
 
 export async function fetchUserReadingSourceDistribution(filters: StatisticsFilterConfig): Promise<UserReadingSourceDistribution> {

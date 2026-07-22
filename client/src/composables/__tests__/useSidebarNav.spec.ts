@@ -28,13 +28,13 @@ function allowedIds(context: ReturnType<typeof makeContext>) {
 
 describe('sidebar nav registry', () => {
   it('shows only ungated destinations to a user with no permissions', () => {
-    expect(allowedIds(makeContext())).toEqual(['dashboard', 'authors', 'series', 'annotations'])
+    expect(allowedIds(makeContext())).toEqual(['dashboard', 'daily-reading', 'authors', 'series', 'annotations'])
   })
 
   it('places Dashboard, Book Dock and Tools in the primary zone, above the entity sections', () => {
     const primary = SIDEBAR_NAV_REGISTRY.filter((candidate) => candidate.zone === 'primary').map((candidate) => candidate.id)
 
-    expect(primary).toEqual(['dashboard', 'book-dock', 'tools'])
+    expect(primary).toEqual(['dashboard', 'daily-reading', 'book-dock', 'tools'])
   })
 
   it('leaves Statistics and Achievements to the header', () => {

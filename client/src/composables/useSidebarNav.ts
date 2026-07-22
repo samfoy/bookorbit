@@ -1,7 +1,7 @@
 import { computed, type Component } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, type RouteLocationNormalizedLoaded, type RouteLocationRaw } from 'vue-router'
-import { Highlighter, LayoutDashboard, Library, PackageOpen, Users, Wrench } from '@lucide/vue'
+import { ChartColumnBig, Highlighter, LayoutDashboard, Library, PackageOpen, Users, Wrench } from '@lucide/vue'
 import type { BrowseCounts } from '@bookorbit/types'
 import { usePermissions } from '@/features/auth/composables/usePermissions'
 import { useBookDockSummary } from '@/features/book-dock/composables/useBookDockSummary'
@@ -71,6 +71,14 @@ export const SIDEBAR_NAV_REGISTRY: readonly SidebarNavEntry[] = [
     zone: 'primary',
     to: { name: 'dashboard' },
     isActive: (route) => route.name === 'dashboard',
+  },
+  {
+    id: 'daily-reading',
+    labelKey: 'components.sidebar.dailyReading',
+    icon: ChartColumnBig,
+    zone: 'primary',
+    to: { name: 'daily-reading' },
+    isActive: (route) => route.name === 'daily-reading',
   },
   {
     id: 'book-dock',

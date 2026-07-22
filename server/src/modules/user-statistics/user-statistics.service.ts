@@ -7,6 +7,7 @@ import type {
   UserCompletionLatencyDistribution,
   UserCompletionRaceBook,
   UserCompletionTimelinePoint,
+  UserDailyBookReadingStat,
   UserDailyReadingStat,
   UserFavoriteDayStat,
   UserGenreReadingTimeItem,
@@ -160,6 +161,12 @@ export class UserStatisticsService {
         progressDelta: this.roundProgressDelta(item.progressDelta),
       }));
     });
+  }
+
+  async getDailyReadingByBook(user: RequestUser, query: UserDailyReadingQueryDto): Promise<UserDailyBookReadingStat[]> {
+    const days = query.days ?? BEHAVIOR_DEFAULT_DAYS;
+    const key = this.buildUserCacheKey('daily-reading-by-book', user, { libraries: this.normalizeLibraryIds(query.libraryIds), days });
+    return this.cache.get(String(user.id), key, () => this.repo.getDailyReadingSecondsByBook(user.id, user.isSuperuser, query.libraryIds, days));
   }
 
   async getReadingHeatmap(user: RequestUser, query: UserDailyReadingQueryDto): Promise<UserDailyReadingStat[]> {
