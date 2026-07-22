@@ -23,6 +23,11 @@ export class UserStatisticsController {
     return this.userStatisticsService.getDailyReading(user, query);
   }
 
+  @Get('daily-reading-by-book')
+  getDailyReadingByBook(@CurrentUser() user: RequestUser, @Query() query: UserDailyReadingQueryDto) {
+    return this.userStatisticsService.getDailyReadingByBook(user, query);
+  }
+
   @Get('reading-heatmap')
   getReadingHeatmap(@CurrentUser() user: RequestUser, @Query() query: UserDailyReadingQueryDto) {
     return this.userStatisticsService.getReadingHeatmap(user, query);

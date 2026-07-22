@@ -109,6 +109,7 @@ const {
 } = useDraggableOrder({ source: collections, persist: reorderCollections })
 
 const isDashboardActive = computed(() => route.name === 'dashboard')
+const isDailyReadingActive = computed(() => route.name === 'daily-reading')
 const isAuthorsActive = computed(() => route.name === 'authors' || route.name === 'author-detail')
 const isSeriesActive = computed(() => route.name === 'series' || route.name === 'series-detail')
 const isToolsActive = computed(() => typeof route.name === 'string' && route.name.startsWith('tools-'))
@@ -209,6 +210,13 @@ onUnmounted(() => stopLibraryUploadListener())
               :icon="Icons.LayoutDashboard"
               :label="t('components.sidebar.dashboard')"
               @click="navigateFromSidebar({ name: 'dashboard' })"
+            />
+            <SidebarNavItem
+              :is-active="isDailyReadingActive"
+              :tooltip="t('components.sidebar.dailyReading')"
+              :icon="Icons.ChartColumnBig"
+              :label="t('components.sidebar.dailyReading')"
+              @click="navigateFromSidebar({ name: 'daily-reading' })"
             />
             <SidebarNavItem
               :is-active="isAuthorsActive"

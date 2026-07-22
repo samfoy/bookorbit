@@ -294,6 +294,12 @@ export const routes: RouteRecordRaw[] = [
         },
       },
       {
+        path: '/daily-reading',
+        name: 'daily-reading',
+        component: () => import('@/features/statistics/components/DailyReadingPage.vue'),
+        meta: { title: () => t('titles.dailyReading') },
+      },
+      {
         path: '/achievements',
         name: 'achievements',
         component: () => import('@/views/AchievementsView.vue'),

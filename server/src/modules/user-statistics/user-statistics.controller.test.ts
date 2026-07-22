@@ -4,6 +4,7 @@ function makeService() {
   return {
     getSummary: vi.fn().mockResolvedValue('summary'),
     getDailyReading: vi.fn().mockResolvedValue('daily'),
+    getDailyReadingByBook: vi.fn().mockResolvedValue('daily-by-book'),
     getReadingHeatmap: vi.fn().mockResolvedValue('heatmap'),
     getReadingSourceDistribution: vi.fn().mockResolvedValue('source-distribution'),
     getPeakReadingHours: vi.fn().mockResolvedValue('peak-hours'),
@@ -36,6 +37,7 @@ describe('UserStatisticsController', () => {
 
     await expect(controller.getSummary(user, filter)).resolves.toBe('summary');
     await expect(controller.getDailyReading(user, daily)).resolves.toBe('daily');
+    await expect(controller.getDailyReadingByBook(user, daily)).resolves.toBe('daily-by-book');
     await expect(controller.getReadingHeatmap(user, daily)).resolves.toBe('heatmap');
     await expect(controller.getReadingSourceDistribution(user, daily)).resolves.toBe('source-distribution');
     await expect(controller.getPeakHours(user, daily)).resolves.toBe('peak-hours');
@@ -55,6 +57,7 @@ describe('UserStatisticsController', () => {
 
     expect(service.getSummary).toHaveBeenCalledWith(user, filter);
     expect(service.getDailyReading).toHaveBeenCalledWith(user, daily);
+    expect(service.getDailyReadingByBook).toHaveBeenCalledWith(user, daily);
     expect(service.getReadingHeatmap).toHaveBeenCalledWith(user, daily);
     expect(service.getReadingSourceDistribution).toHaveBeenCalledWith(user, daily);
     expect(service.getPeakReadingHours).toHaveBeenCalledWith(user, daily);
