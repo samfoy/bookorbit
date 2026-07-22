@@ -637,11 +637,13 @@ export class UserStatisticsRepository {
     isSuperuser: boolean,
     filterLibraryIds: number[] | undefined,
     days: number,
+    timeZone = 'UTC',
   ): Promise<UserDailyBookReadingStat[]> {
     const accessible = await this.getAccessibleLibraryIds(userId, isSuperuser);
     const libraryFilter = this.libraryFilter(this.intersectLibraryIds(accessible, filterLibraryIds));
     const since = this.sinceDateForDays(days);
-    const dayExpr = sql<string>`date_trunc('day', ${readingSessions.startedAt})::date::text`;
+    const resolvedTimeZone = resolveTimeZone(timeZone, 'UTC');
+    const dayExpr = sql<string>`(${readingSessions.startedAt} AT TIME ZONE ${resolvedTimeZone})::date::text`;
 
     return this.db
       .select({

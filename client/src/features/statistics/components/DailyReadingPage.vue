@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, shallowRef, watchEffect } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
 import VChart from 'vue-echarts'
 import { AlertCircle, BookOpen, CalendarCheck, CalendarClock, Clock, Flame } from '@lucide/vue'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -11,9 +12,11 @@ import { useUserDailyReadingByBook } from '../composables/useUserDailyReadingByB
 
 const RANGE_OPTIONS = [30, 90, 180, 365] as const
 const MAX_BOOK_SERIES = 8
+const LEGEND_LABEL_MAX_CHARS = 28
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 const { t } = useI18n()
+const router = useRouter()
 const themeStore = useThemeStore()
 
 const days = ref<number>(90)
@@ -25,8 +28,18 @@ function setRange(value: number) {
   days.value = value
 }
 
+// Local-calendar day keys: the server buckets sessions in the profile timezone,
+// so the axis must be built from local date parts, not UTC (toISOString would
+// shift evening reading onto the next day's bar).
 function formatDayKey(date: Date): string {
-  return date.toISOString().slice(0, 10)
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const dayOfMonth = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${dayOfMonth}`
+}
+
+function truncateLabel(label: string): string {
+  return label.length > LEGEND_LABEL_MAX_CHARS ? `${label.slice(0, LEGEND_LABEL_MAX_CHARS - 1)}…` : label
 }
 
 function formatDayLabel(dayKey: string): string {
@@ -47,17 +60,18 @@ function formatDuration(totalSeconds: number): string {
 const dayKeys = computed(() => {
   const keys: string[] = []
   const now = new Date()
-  const cursor = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
-  cursor.setUTCDate(cursor.getUTCDate() - (days.value - 1))
+  const cursor = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  cursor.setDate(cursor.getDate() - (days.value - 1))
   for (let i = 0; i < days.value; i += 1) {
     keys.push(formatDayKey(cursor))
-    cursor.setUTCDate(cursor.getUTCDate() + 1)
+    cursor.setDate(cursor.getDate() + 1)
   }
   return keys
 })
 
 interface BookGroup {
   key: string
+  bookId: number | null
   label: string
   totalSeconds: number
   byDay: Map<string, number>
@@ -78,7 +92,7 @@ const bookGroups = computed<BookGroup[]>(() => {
   const ranked = [...byBook.entries()].sort((a, b) => b[1].totalSeconds - a[1].totalSeconds)
   const groups: BookGroup[] = ranked
     .slice(0, MAX_BOOK_SERIES)
-    .map(([bookId, entry]) => ({ key: `book-${bookId}`, label: entry.label, totalSeconds: entry.totalSeconds, byDay: entry.byDay }))
+    .map(([bookId, entry]) => ({ key: `book-${bookId}`, bookId, label: entry.label, totalSeconds: entry.totalSeconds, byDay: entry.byDay }))
 
   const rest = ranked.slice(MAX_BOOK_SERIES)
   if (rest.length > 0) {
@@ -90,10 +104,15 @@ const bookGroups = computed<BookGroup[]>(() => {
         byDay.set(day, (byDay.get(day) ?? 0) + seconds)
       }
     }
-    groups.push({ key: 'other', label: t('statistics.dailyReading.otherBooks', { count: rest.length }), totalSeconds, byDay })
+    groups.push({ key: 'other', bookId: null, label: t('statistics.dailyReading.otherBooks', { count: rest.length }), totalSeconds, byDay })
   }
   return groups
 })
+
+function openBook(bookId: number | null) {
+  if (bookId == null) return
+  void router.push({ name: 'book-detail', params: { bookId } })
+}
 
 const totalsByDay = computed(() => {
   const totals = new Map<string, number>()
@@ -186,6 +205,7 @@ watchEffect(() => {
       itemWidth: 12,
       itemHeight: 12,
       textStyle: { fontSize: 11 },
+      formatter: truncateLabel,
     },
     grid: { left: 8, right: 12, top: 16, bottom: 46, containLabel: true },
     xAxis: {
@@ -217,6 +237,7 @@ const bookTotals = computed(() => {
   const max = groups.reduce((m, g) => Math.max(m, g.totalSeconds), 0)
   return groups.map((group, index) => ({
     key: group.key,
+    bookId: group.bookId,
     label: group.label,
     totalSeconds: group.totalSeconds,
     sharePct: max > 0 ? Math.round((group.totalSeconds / max) * 100) : 0,
@@ -309,14 +330,23 @@ const summaryCards = computed(() => [
 
       <div class="bg-card text-card-foreground rounded-lg border p-4 shadow-sm">
         <p class="mb-3 text-sm font-semibold">{{ t('statistics.dailyReading.byBookTitle') }}</p>
-        <ul class="flex flex-col gap-2.5">
-          <li v-for="book in bookTotals" :key="book.key" class="flex items-center gap-3">
-            <span class="size-2.5 shrink-0 rounded-sm" :style="{ backgroundColor: book.color }" />
-            <span class="min-w-0 flex-1 truncate text-sm">{{ book.label }}</span>
-            <div class="bg-muted hidden h-1.5 w-40 overflow-hidden rounded-full sm:block">
-              <div class="h-full rounded-full" :style="{ width: `${book.sharePct}%`, backgroundColor: book.color }" />
-            </div>
-            <span class="text-muted-foreground w-20 shrink-0 text-right text-sm tabular-nums">{{ formatDuration(book.totalSeconds) }}</span>
+        <ul class="flex flex-col gap-1">
+          <li v-for="book in bookTotals" :key="book.key">
+            <button
+              type="button"
+              class="flex w-full items-center gap-3 rounded-md px-2 py-1.5 text-left transition-colors enabled:hover:bg-muted/60 disabled:cursor-default"
+              :disabled="book.bookId == null"
+              @click="openBook(book.bookId)"
+            >
+              <span class="size-2.5 shrink-0 rounded-sm" :style="{ backgroundColor: book.color }" />
+              <span class="min-w-0 flex-1 truncate text-sm" :class="book.bookId != null ? 'hover:underline' : 'text-muted-foreground'">{{
+                book.label
+              }}</span>
+              <span class="bg-muted hidden h-1.5 w-40 overflow-hidden rounded-full sm:block">
+                <span class="block h-full rounded-full" :style="{ width: `${book.sharePct}%`, backgroundColor: book.color }" />
+              </span>
+              <span class="text-muted-foreground w-20 shrink-0 text-right text-sm tabular-nums">{{ formatDuration(book.totalSeconds) }}</span>
+            </button>
           </li>
         </ul>
       </div>
