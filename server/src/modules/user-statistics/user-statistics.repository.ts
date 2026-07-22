@@ -645,20 +645,32 @@ export class UserStatisticsRepository {
     const resolvedTimeZone = resolveTimeZone(timeZone, 'UTC');
     const dayExpr = sql<string>`(${readingSessions.startedAt} AT TIME ZONE ${resolvedTimeZone})::date::text`;
 
-    return this.db
+    // Parameterized AT TIME ZONE binds as distinct placeholders in SELECT vs GROUP BY,
+    // which Postgres rejects; alias the day in a subquery and group on the alias instead.
+    const sessionDays = this.db
       .select({
-        day: dayExpr,
+        day: dayExpr.as('day'),
         bookId: readingSessions.bookId,
         bookTitle: bookMetadata.title,
-        readingSeconds: sql<number>`coalesce(sum(${readingSessions.durationSeconds}), 0)::int`,
-        sessionsCount: sql<number>`count(*)::int`,
+        durationSeconds: readingSessions.durationSeconds,
       })
       .from(readingSessions)
       .innerJoin(books, eq(books.id, readingSessions.bookId))
       .leftJoin(bookMetadata, eq(bookMetadata.bookId, readingSessions.bookId))
       .where(and(eq(readingSessions.userId, userId), gte(readingSessions.startedAt, since), libraryFilter))
-      .groupBy(dayExpr, readingSessions.bookId, bookMetadata.title)
-      .orderBy(dayExpr, readingSessions.bookId);
+      .as('session_days');
+
+    return this.db
+      .select({
+        day: sessionDays.day,
+        bookId: sessionDays.bookId,
+        bookTitle: sessionDays.bookTitle,
+        readingSeconds: sql<number>`coalesce(sum(${sessionDays.durationSeconds}), 0)::int`,
+        sessionsCount: sql<number>`count(*)::int`,
+      })
+      .from(sessionDays)
+      .groupBy(sessionDays.day, sessionDays.bookId, sessionDays.bookTitle)
+      .orderBy(sessionDays.day, sessionDays.bookId);
   }
 
   async getReadingPacePoints(userId: number, isSuperuser: boolean, filterLibraryIds?: number[], days = 1825): Promise<UserReadingPacePoint[]> {
