@@ -302,7 +302,9 @@ const summaryCards = computed(() => [
 
       <div class="bg-card text-card-foreground rounded-lg border p-4 shadow-sm">
         <p class="text-sm font-semibold">{{ t('statistics.dailyReading.chartTitle') }}</p>
-        <VChart :option autoresize class="h-[380px] w-full" />
+        <div class="h-[380px] w-full">
+          <VChart :option autoresize style="height: 100%; width: 100%" />
+        </div>
       </div>
 
       <div class="bg-card text-card-foreground rounded-lg border p-4 shadow-sm">
