@@ -165,8 +165,11 @@ export class UserStatisticsService {
 
   async getDailyReadingByBook(user: RequestUser, query: UserDailyReadingQueryDto): Promise<UserDailyBookReadingStat[]> {
     const days = query.days ?? BEHAVIOR_DEFAULT_DAYS;
-    const key = this.buildUserCacheKey('daily-reading-by-book', user, { libraries: this.normalizeLibraryIds(query.libraryIds), days });
-    return this.cache.get(String(user.id), key, () => this.repo.getDailyReadingSecondsByBook(user.id, user.isSuperuser, query.libraryIds, days));
+    const timeZone = resolveTimeZone((user.settings as { timezone?: unknown } | undefined)?.timezone, 'UTC');
+    const key = this.buildUserCacheKey('daily-reading-by-book', user, { libraries: this.normalizeLibraryIds(query.libraryIds), days, timeZone });
+    return this.cache.get(String(user.id), key, () =>
+      this.repo.getDailyReadingSecondsByBook(user.id, user.isSuperuser, query.libraryIds, days, timeZone),
+    );
   }
 
   async getReadingHeatmap(user: RequestUser, query: UserDailyReadingQueryDto): Promise<UserDailyReadingStat[]> {

@@ -43,9 +43,12 @@ describe('UserStatisticsService', () => {
     const repo = { getDailyReadingSecondsByBook: vi.fn().mockResolvedValue(rows) };
     const service = new UserStatisticsService(repo as any);
 
-    const result = await service.getDailyReadingByBook({ id: 123, isSuperuser: false } as any, { days: 30, libraryIds: [1] });
+    const result = await service.getDailyReadingByBook({ id: 123, isSuperuser: false, settings: { timezone: 'America/Los_Angeles' } } as any, {
+      days: 30,
+      libraryIds: [1],
+    });
 
-    expect(repo.getDailyReadingSecondsByBook).toHaveBeenCalledWith(123, false, [1], 30);
+    expect(repo.getDailyReadingSecondsByBook).toHaveBeenCalledWith(123, false, [1], 30, 'America/Los_Angeles');
     expect(result).toEqual(rows);
   });
 
