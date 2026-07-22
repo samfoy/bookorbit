@@ -18,6 +18,14 @@ export interface UserDailyReadingStat {
   bySource?: Record<ReadingSessionSourceBucket, number>;
 }
 
+export interface UserDailyBookReadingStat {
+  day: string;
+  bookId: number;
+  bookTitle: string | null;
+  readingSeconds: number;
+  sessionsCount: number;
+}
+
 export interface UserReadingSourceDistributionSlice {
   bucket: ReadingSessionSourceBucket;
   readingSeconds: number;
