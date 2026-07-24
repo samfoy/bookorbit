@@ -186,6 +186,10 @@ watchEffect(() => {
     tooltip: {
       trigger: 'axis',
       axisPointer: { type: 'shadow' },
+      // Long book titles: keep the tooltip inside the viewport and let rows wrap
+      // instead of clipping off both screen edges on mobile.
+      confine: true,
+      extraCssText: 'max-width: min(320px, 78vw); white-space: normal; word-break: break-word;',
       formatter: (params: Array<{ seriesName: string; value: number; dataIndex: number; marker: string }>) => {
         if (!params.length) return ''
         const index = params[0]!.dataIndex
@@ -194,7 +198,7 @@ watchEffect(() => {
         const rows = params
           .filter((point) => point.value > 0)
           .sort((a, b) => b.value - a.value)
-          .map((point) => `${point.marker} ${point.seriesName}: <strong>${formatDuration(point.value * 60)}</strong>`)
+          .map((point) => `${point.marker} ${truncateLabel(point.seriesName)}: <strong>${formatDuration(point.value * 60)}</strong>`)
         const header = `${formatDayLabel(day)}<br/>${t('statistics.dailyReading.tooltipTotal')}: <strong>${formatDuration(totalSeconds)}</strong>`
         return rows.length ? `${header}<br/>${rows.join('<br/>')}` : header
       },
