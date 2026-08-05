@@ -23,6 +23,7 @@ import type {
   UserReadingSurvivalPoint,
   UserSessionArchetypePoint,
   UserStatisticsSummary,
+  UserSettings,
 } from '@bookorbit/types';
 import { READING_SESSION_SOURCE_BUCKETS, emptySourceBucketRecord, toReadingSessionSourceBucket } from '@bookorbit/types';
 
@@ -433,26 +434,33 @@ export class UserStatisticsService {
 
   async getGoalTrajectory(user: RequestUser, query: UserGoalTrajectoryQueryDto): Promise<UserGoalTrajectory> {
     const days = query.days ?? GOAL_TRAJECTORY_DEFAULT_DAYS;
-    const goalBooks = query.goalBooks ?? GOAL_TRAJECTORY_DEFAULT_GOAL_BOOKS;
+    // Fall back to the user's configured yearly goal so the chart matches the dashboard
+    // reading-goal widget even when the caller omits the query param.
+    const goalBooks =
+      query.goalBooks ?? (user.settings as UserSettings | undefined)?.dashboardConfig?.readingGoal ?? GOAL_TRAJECTORY_DEFAULT_GOAL_BOOKS;
     const key = this.buildUserCacheKey('goal-trajectory', user, {
       libraries: this.normalizeLibraryIds(query.libraryIds),
       days,
       goalBooks,
     });
     return this.cache.get(String(user.id), key, async () => {
-      const rows = await this.repo.getMonthlyCompletions(user.id, user.isSuperuser, query.libraryIds, days);
+      const rows = await this.repo.getMonthlyFinishedBooks(user.id, user.isSuperuser, query.libraryIds, days);
       const byMonth = new Map(rows.map((row) => [`${row.year}-${row.month}`, row.count]));
       const start = this.startOfUtcMonth(this.sinceDateForDays(days));
       const end = this.startOfUtcMonth(new Date());
       const points: UserGoalTrajectoryPoint[] = [];
       const targetPerMonth = goalBooks / 12;
       let actualCumulative = 0;
-      let monthIndex = 0;
+      let cumulativeYear: number | null = null;
 
       for (const cursor = new Date(start); cursor <= end; cursor.setUTCMonth(cursor.getUTCMonth() + 1)) {
-        monthIndex += 1;
         const year = cursor.getUTCFullYear();
         const month = cursor.getUTCMonth() + 1;
+        // Both series are per-calendar-year, so the running total restarts every January.
+        if (cumulativeYear !== year) {
+          actualCumulative = 0;
+          cumulativeYear = year;
+        }
         const monthActual = byMonth.get(`${year}-${month}`) ?? 0;
         actualCumulative += monthActual;
 
@@ -460,7 +468,9 @@ export class UserStatisticsService {
           year,
           month,
           actualCumulative,
-          targetCumulative: Number((targetPerMonth * monthIndex).toFixed(2)),
+          // The goal is a per-CALENDAR-YEAR target, so pace resets each January instead of
+          // accumulating from the start of the (possibly mid-year) window.
+          targetCumulative: Number((targetPerMonth * month).toFixed(2)),
         });
       }
 

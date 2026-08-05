@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, eq, gt, gte, inArray, isNotNull, lt, ne, sql } from 'drizzle-orm';
+import { and, eq, gt, gte, inArray, isNotNull, isNull, lt, ne, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 
 import type {
@@ -31,6 +31,7 @@ import {
   books,
   genres,
   readingProgress,
+  readingAttempts,
   readingSessions,
   userBookStatus,
   userLibraryAccess,
@@ -513,6 +514,37 @@ export class UserStatisticsRepository {
 
   async getMonthlyCompletions(userId: number, isSuperuser: boolean, filterLibraryIds?: number[], days = 365): Promise<UserCompletionTimelinePoint[]> {
     return this.getCompletionTimeline(userId, isSuperuser, filterLibraryIds, days);
+  }
+
+  /**
+   * Monthly finished-book counts taken from reading attempts (the same source the dashboard
+   * reading-goal widget counts), so goal progress includes books finished on a device or
+   * imported from Hardcover/StoryGraph that never logged a >=99% reader session.
+   */
+  async getMonthlyFinishedBooks(userId: number, isSuperuser: boolean, filterLibraryIds?: number[], days = 365): Promise<UserCompletionTimelinePoint[]> {
+    const accessible = await this.getAccessibleLibraryIds(userId, isSuperuser);
+    const libraryFilter = this.libraryFilter(this.intersectLibraryIds(accessible, filterLibraryIds));
+    const since = this.sinceDateForDays(days);
+
+    const yearExpr = sql<number>`extract(year from ${readingAttempts.endedOn})::int`;
+    const monthExpr = sql<number>`extract(month from ${readingAttempts.endedOn})::int`;
+
+    return this.db
+      .select({ year: yearExpr, month: monthExpr, count: sql<number>`count(*)::int` })
+      .from(readingAttempts)
+      .innerJoin(books, eq(books.id, readingAttempts.bookId))
+      .where(
+        and(
+          eq(readingAttempts.userId, userId),
+          eq(readingAttempts.outcome, 'completed'),
+          isNull(readingAttempts.deletedAt),
+          isNotNull(readingAttempts.endedOn),
+          gte(readingAttempts.endedOn, since.toISOString().slice(0, 10)),
+          libraryFilter,
+        ),
+      )
+      .groupBy(yearExpr, monthExpr)
+      .orderBy(yearExpr, monthExpr);
   }
 
   async getProgressFunnelInRange(

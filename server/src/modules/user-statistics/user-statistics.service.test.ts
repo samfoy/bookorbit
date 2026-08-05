@@ -229,9 +229,10 @@ describe('UserStatisticsService', () => {
     ]);
   });
 
-  it('builds goal trajectory with cumulative actual and target lines', async () => {
+  it('builds goal trajectory with per-calendar-year cumulative actual and target lines', async () => {
     const repo = {
-      getMonthlyCompletions: vi.fn().mockResolvedValue([
+      getMonthlyFinishedBooks: vi.fn().mockResolvedValue([
+        { year: 2025, month: 12, count: 4 },
         { year: 2026, month: 1, count: 1 },
         { year: 2026, month: 3, count: 2 },
       ]),
@@ -240,15 +241,28 @@ describe('UserStatisticsService', () => {
     const service = new UserStatisticsService(repo as any);
     const result = await service.getGoalTrajectory({ id: 123, isSuperuser: false } as any, { days: 120, goalBooks: 12, libraryIds: [] });
 
-    expect(repo.getMonthlyCompletions).toHaveBeenCalledWith(123, false, [], 120);
+    expect(repo.getMonthlyFinishedBooks).toHaveBeenCalledWith(123, false, [], 120);
     expect(result.goalBooks).toBe(12);
+    // Target tracks the month-of-year (Jan = 1/12 of the goal), and both series reset in January.
     expect(result.points).toEqual([
-      { year: 2025, month: 12, actualCumulative: 0, targetCumulative: 1 },
-      { year: 2026, month: 1, actualCumulative: 1, targetCumulative: 2 },
-      { year: 2026, month: 2, actualCumulative: 1, targetCumulative: 3 },
-      { year: 2026, month: 3, actualCumulative: 3, targetCumulative: 4 },
-      { year: 2026, month: 4, actualCumulative: 3, targetCumulative: 5 },
+      { year: 2025, month: 12, actualCumulative: 4, targetCumulative: 12 },
+      { year: 2026, month: 1, actualCumulative: 1, targetCumulative: 1 },
+      { year: 2026, month: 2, actualCumulative: 1, targetCumulative: 2 },
+      { year: 2026, month: 3, actualCumulative: 3, targetCumulative: 3 },
+      { year: 2026, month: 4, actualCumulative: 3, targetCumulative: 4 },
     ]);
+  });
+
+  it('falls back to the configured reading goal when the query omits goalBooks', async () => {
+    const repo = { getMonthlyFinishedBooks: vi.fn().mockResolvedValue([]) };
+
+    const service = new UserStatisticsService(repo as any);
+    const result = await service.getGoalTrajectory(
+      { id: 123, isSuperuser: false, settings: { dashboardConfig: { readingGoal: 100 } } } as any,
+      { days: 120, libraryIds: [] },
+    );
+
+    expect(result.goalBooks).toBe(100);
   });
 
   it('passes progress funnel query to repository with defaults', async () => {
