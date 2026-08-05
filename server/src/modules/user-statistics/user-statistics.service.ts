@@ -264,9 +264,10 @@ export class UserStatisticsService {
 
   async getFavoriteReadingDays(user: RequestUser, query: UserDailyReadingQueryDto): Promise<UserFavoriteDayStat[]> {
     const days = query.days ?? BEHAVIOR_DEFAULT_DAYS;
-    const key = this.buildUserCacheKey('favorite-days', user, { libraries: this.normalizeLibraryIds(query.libraryIds), days });
+    const timeZone = resolveTimeZone((user.settings as { timezone?: unknown } | undefined)?.timezone, 'UTC');
+    const key = this.buildUserCacheKey('favorite-days', user, { libraries: this.normalizeLibraryIds(query.libraryIds), days, timeZone });
     return this.cache.get(String(user.id), key, async () => {
-      const rows = await this.repo.getFavoriteReadingDays(user.id, user.isSuperuser, query.libraryIds, days);
+      const rows = await this.repo.getFavoriteReadingDays(user.id, user.isSuperuser, query.libraryIds, days, timeZone);
       const byDay = new Map<
         number,
         { readingSeconds: number; eventsCount: number; byFormat: Record<string, number>; bySource: Record<ReadingSessionSourceBucket, number> }
@@ -585,8 +586,9 @@ export class UserStatisticsService {
 
   async getSessionArchetypes(user: RequestUser, query: UserDailyReadingQueryDto): Promise<UserSessionArchetypePoint[]> {
     const days = query.days ?? SESSION_ARCHETYPES_DEFAULT_DAYS;
-    const key = this.buildUserCacheKey('session-archetypes', user, { libraries: this.normalizeLibraryIds(query.libraryIds), days });
-    return this.cache.get(String(user.id), key, () => this.repo.getSessionArchetypePoints(user.id, user.isSuperuser, query.libraryIds, days));
+    const timeZone = resolveTimeZone((user.settings as { timezone?: unknown } | undefined)?.timezone, 'UTC');
+    const key = this.buildUserCacheKey('session-archetypes', user, { libraries: this.normalizeLibraryIds(query.libraryIds), days, timeZone });
+    return this.cache.get(String(user.id), key, () => this.repo.getSessionArchetypePoints(user.id, user.isSuperuser, query.libraryIds, days, timeZone));
   }
 
   async getGenreReadingTime(user: RequestUser, query: UserDailyReadingQueryDto): Promise<UserGenreReadingTimeItem[]> {

@@ -24,6 +24,7 @@ import { StatsCache } from '../../common/cache/stats-cache';
 import { mapWithConcurrency } from '../../common/utils/batch.utils';
 import { sanitizeLogValue } from '../../common/utils/log-sanitize.utils';
 import { LibraryService } from '../library/library.service';
+import { resolveTimeZone } from '../../common/utils/timezone.utils';
 import {
   buildDaysSeries,
   computeChallengeResult,
@@ -181,7 +182,13 @@ export class DashboardWidgetService {
       const contentFilters = this.getContentFilters(user);
       const since = new Date();
       since.setUTCMonth(since.getUTCMonth() - 6);
-      const data = await this.widgetRepo.getReadingDnaData(user.id, accessibleLibraryIds, since, contentFilters);
+      const data = await this.widgetRepo.getReadingDnaData(
+        user.id,
+        accessibleLibraryIds,
+        since,
+        contentFilters,
+        resolveTimeZone(user.settings?.timezone, 'UTC'),
+      );
       return computeReadingDna(data.avgPageCount, data.uniqueGenres, data.totalBooks, data.readingDaysRatio, data.peakHour, data.avgPagesPerHour);
     });
   }

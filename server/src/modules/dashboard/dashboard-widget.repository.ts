@@ -33,6 +33,7 @@ import {
   userReadingDailyStats,
 } from '../../db/schema';
 import { buildContentFilterClauses } from '../../common/utils/content-filter-sql.utils';
+import { resolveTimeZone } from '../../common/utils/timezone.utils';
 import { computeLongestStreak, computeStreakData, formatDay } from './dashboard-widget.calculations';
 
 type Db = NodePgDatabase<typeof schema>;
@@ -691,6 +692,7 @@ export class DashboardWidgetRepository {
     accessibleLibraryIds: number[],
     since: Date,
     contentFilters?: ContentFilterRules,
+    timeZone = 'UTC',
   ): Promise<{
     avgPageCount: number;
     uniqueGenres: number;
@@ -706,6 +708,20 @@ export class DashboardWidgetRepository {
     const cfClauses = this.getContentFilterClauses(contentFilters);
     const libFilter = inArray(books.libraryId, accessibleLibraryIds);
     const presentFilter = eq(books.status, 'present');
+    const resolvedTimeZone = resolveTimeZone(timeZone, 'UTC');
+
+    // Peak hour must be the user's local wall-clock hour, not UTC. Parameterized AT TIME ZONE
+    // binds as distinct placeholders in SELECT vs GROUP BY (Postgres 42803), so alias it in a
+    // subquery and group on the alias instead.
+    const peakHourSessions = this.db
+      .select({
+        hour: sql<number>`extract(hour from (${readingSessions.startedAt} AT TIME ZONE ${resolvedTimeZone}))::int`.as('hour'),
+        durationSeconds: readingSessions.durationSeconds,
+      })
+      .from(readingSessions)
+      .innerJoin(books, eq(books.id, readingSessions.bookId))
+      .where(and(eq(readingSessions.userId, userId), libFilter, presentFilter, ...cfClauses))
+      .as('peak_hour_sessions');
 
     const [[statsRow], [genreRow], dailyRows, [peakRow], [knownSpeedRow], [unknownSpeedRow]] = await Promise.all([
       this.db
@@ -739,14 +755,12 @@ export class DashboardWidgetRepository {
         .groupBy(userReadingDailyStats.day),
       this.db
         .select({
-          hour: sql<number>`extract(hour from ${readingSessions.startedAt})::int`,
-          total: sql<number>`sum(${readingSessions.durationSeconds})::int`,
+          hour: peakHourSessions.hour,
+          total: sql<number>`sum(${peakHourSessions.durationSeconds})::int`,
         })
-        .from(readingSessions)
-        .innerJoin(books, eq(books.id, readingSessions.bookId))
-        .where(and(eq(readingSessions.userId, userId), libFilter, presentFilter, ...cfClauses))
-        .groupBy(sql`extract(hour from ${readingSessions.startedAt})`)
-        .orderBy(desc(sql`sum(${readingSessions.durationSeconds})`))
+        .from(peakHourSessions)
+        .groupBy(peakHourSessions.hour)
+        .orderBy(desc(sql`sum(${peakHourSessions.durationSeconds})`))
         .limit(1),
       this.db
         .select({

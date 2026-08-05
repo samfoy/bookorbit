@@ -89,6 +89,8 @@ describe('UserStatisticsRepository', () => {
       [{ day: '2026-04-15', readingSeconds: 120, progressDelta: 1.5, eventsCount: 2 }],
       [],
       [{ hour: 9, format: 'EPUB', source: 'koreader', readingSeconds: 500, eventsCount: 3 }],
+      // getFavoriteReadingDays now builds a subquery first, so it consumes two selects.
+      [],
       [{ dayOfWeek: 2, source: 'manual', format: 'EPUB', readingSeconds: 900, eventsCount: 4 }],
       [],
       [{ year: 2026, month: 4, count: 2 }],
@@ -140,6 +142,52 @@ describe('UserStatisticsRepository', () => {
     expect(text).toContain('"reading_sessions"."started_at" AT TIME ZONE $1');
     expect(text).toContain('from (select');
     expect(text).toContain('group by "hour", "format", "session_buckets"."source"');
+    expect(text.match(/AT TIME ZONE/g)).toHaveLength(1);
+  });
+
+  it('compiles session archetype SQL bucketing the local wall-clock hour and weekday', async () => {
+    const calls: Array<{ text: string; params: unknown[] }> = [];
+    const fakeClient = {
+      query: vi.fn().mockImplementation((cfg: { text: string }, params: unknown[]) => {
+        calls.push({ text: cfg.text, params });
+        return Promise.resolve({ rows: [] });
+      }),
+    };
+    const db = drizzle({ client: fakeClient as never, schema });
+    const repo = new UserStatisticsRepository(db as never);
+    vi.spyOn(repo as any, 'getAccessibleLibraryIds').mockResolvedValue([2]);
+
+    await expect(repo.getSessionArchetypePoints(5, true, [2], 30, 'America/Los_Angeles')).resolves.toEqual([]);
+
+    expect(calls).toHaveLength(1);
+    const [{ text, params }] = calls;
+    // hour, minute and weekday must all be derived from the converted timestamp, not raw UTC.
+    expect(text.match(/AT TIME ZONE/g)).toHaveLength(3);
+    expect(params.filter((param) => param === 'America/Los_Angeles')).toHaveLength(3);
+    expect(text).toMatch(/extract\(dow from \("reading_sessions"\."started_at" AT TIME ZONE \$\d+\)\)/);
+  });
+
+  it('compiles favorite reading day SQL with a single timezone parameter in grouped queries', async () => {
+    const calls: Array<{ text: string; params: unknown[] }> = [];
+    const fakeClient = {
+      query: vi.fn().mockImplementation((cfg: { text: string }, params: unknown[]) => {
+        calls.push({ text: cfg.text, params });
+        return Promise.resolve({ rows: [] });
+      }),
+    };
+    const db = drizzle({ client: fakeClient as never, schema });
+    const repo = new UserStatisticsRepository(db as never);
+    vi.spyOn(repo as any, 'getAccessibleLibraryIds').mockResolvedValue([2]);
+
+    await expect(repo.getFavoriteReadingDays(5, true, [2], 30, 'America/Los_Angeles')).resolves.toEqual([]);
+
+    expect(calls).toHaveLength(1);
+    const [{ text, params }] = calls;
+    expect(params.filter((param) => param === 'America/Los_Angeles')).toHaveLength(1);
+    expect(text).toContain('"reading_sessions"."started_at" AT TIME ZONE $1');
+    // Grouping on the subquery alias keeps Postgres from rejecting the parameterized expression.
+    expect(text).toContain('from (select');
+    expect(text).toContain('group by "day_of_week"');
     expect(text.match(/AT TIME ZONE/g)).toHaveLength(1);
   });
 
