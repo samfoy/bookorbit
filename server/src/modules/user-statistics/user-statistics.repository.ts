@@ -438,27 +438,41 @@ export class UserStatisticsRepository {
     isSuperuser: boolean,
     filterLibraryIds?: number[],
     days = 365,
+    timeZone = 'UTC',
   ): Promise<{ dayOfWeek: number; source: ReadingSessionSource | null; format: string; readingSeconds: number; eventsCount: number }[]> {
     const accessible = await this.getAccessibleLibraryIds(userId, isSuperuser);
     const libraryFilter = this.libraryFilter(this.intersectLibraryIds(accessible, filterLibraryIds));
     const since = this.sinceDateForDays(days);
-    const dayOfWeekExpr = sql<number>`extract(dow from ${readingSessions.startedAt})::int`;
+    const resolvedTimeZone = resolveTimeZone(timeZone, 'UTC');
+    const dayOfWeekExpr = sql<number>`extract(dow from (${readingSessions.startedAt} AT TIME ZONE ${resolvedTimeZone}))::int`;
     const formatExpr = sql<string>`upper(coalesce(${bookFiles.format}, 'UNKNOWN'))`;
 
-    return this.db
+    // Parameterized AT TIME ZONE binds as distinct placeholders in SELECT vs GROUP BY,
+    // which Postgres rejects; alias the weekday in a subquery and group on the alias instead.
+    const sessionDays = this.db
       .select({
-        dayOfWeek: dayOfWeekExpr,
+        dayOfWeek: dayOfWeekExpr.as('day_of_week'),
+        format: formatExpr.as('format'),
         source: readingSessions.source,
-        format: formatExpr,
-        readingSeconds: sql<number>`coalesce(sum(${readingSessions.durationSeconds}), 0)::int`,
-        eventsCount: sql<number>`count(*)::int`,
+        durationSeconds: readingSessions.durationSeconds,
       })
       .from(readingSessions)
       .leftJoin(bookFiles, eq(bookFiles.id, readingSessions.bookFileId))
       .innerJoin(books, eq(books.id, readingSessions.bookId))
       .where(and(eq(readingSessions.userId, userId), gte(readingSessions.startedAt, since), libraryFilter))
-      .groupBy(dayOfWeekExpr, readingSessions.source, formatExpr)
-      .orderBy(dayOfWeekExpr);
+      .as('session_days');
+
+    return this.db
+      .select({
+        dayOfWeek: sessionDays.dayOfWeek,
+        source: sessionDays.source,
+        format: sessionDays.format,
+        readingSeconds: sql<number>`coalesce(sum(${sessionDays.durationSeconds}), 0)::int`,
+        eventsCount: sql<number>`count(*)::int`,
+      })
+      .from(sessionDays)
+      .groupBy(sessionDays.dayOfWeek, sessionDays.source, sessionDays.format)
+      .orderBy(sessionDays.dayOfWeek);
   }
 
   async getCompletionTimeline(
@@ -770,14 +784,18 @@ export class UserStatisticsRepository {
     isSuperuser: boolean,
     filterLibraryIds?: number[],
     days = 365,
+    timeZone = 'UTC',
   ): Promise<UserSessionArchetypePoint[]> {
     const accessible = await this.getAccessibleLibraryIds(userId, isSuperuser);
     const libraryFilter = this.libraryFilter(this.intersectLibraryIds(accessible, filterLibraryIds));
     const since = this.sinceDateForDays(days);
+    const resolvedTimeZone = resolveTimeZone(timeZone, 'UTC');
 
-    const hourExpr = sql<number>`extract(hour from ${readingSessions.startedAt}) + extract(minute from ${readingSessions.startedAt}) / 60.0`;
+    // Bucket by the user's local wall-clock time: a 9pm read must not plot as the next day's 4am.
+    const localStartedAt = sql`(${readingSessions.startedAt} AT TIME ZONE ${resolvedTimeZone})`;
+    const hourExpr = sql<number>`extract(hour from ${localStartedAt}) + extract(minute from ${localStartedAt}) / 60.0`;
     const durationExpr = sql<number>`${readingSessions.durationSeconds} / 60.0`;
-    const dowExpr = sql<number>`extract(dow from ${readingSessions.startedAt})::int`;
+    const dowExpr = sql<number>`extract(dow from ${localStartedAt})::int`;
 
     const rows = await this.db
       .select({ hour: hourExpr, durationMinutes: durationExpr, dayOfWeek: dowExpr })

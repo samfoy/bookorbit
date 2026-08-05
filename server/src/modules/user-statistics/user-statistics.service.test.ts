@@ -190,7 +190,7 @@ describe('UserStatisticsService', () => {
     const service = new UserStatisticsService(repo as any);
     const result = await service.getFavoriteReadingDays({ id: 123, isSuperuser: false } as any, { libraryIds: [] });
 
-    expect(repo.getFavoriteReadingDays).toHaveBeenCalledWith(123, false, [], 365);
+    expect(repo.getFavoriteReadingDays).toHaveBeenCalledWith(123, false, [], 365, 'UTC');
     expect(result).toHaveLength(7);
     expect(result[1]).toEqual({
       dayOfWeek: 1,
