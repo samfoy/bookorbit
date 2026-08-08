@@ -56,13 +56,26 @@ const EDITION_FIELDS = `
       pages
       isbn_10
       isbn_13
-      audio_seconds`;
+      audio_seconds
+      language_id`;
+
+/**
+ * Popular books can have far more editions than EDITION_SELECTION_LIMIT (Guards! Guards! has 77).
+ * Without an explicit order the truncated slice is arbitrary, so the widely-read English edition
+ * can be missing from the candidate set entirely. Order by reader count so the editions most
+ * likely to be the one on the shelf survive truncation.
+ */
+const EDITION_ORDER_BY = `order_by: { users_count: desc }`;
+const EDITION_SELECTION = `editions(limit: ${EDITION_SELECTION_LIMIT}, ${EDITION_ORDER_BY})`;
+
+/** Hardcover's languages.id for English. */
+const HARDCOVER_ENGLISH_LANGUAGE_ID = 1;
 
 const FIND_BOOKS_BY_IDS_QUERY = `
 query FindBooksByIds($ids: [Int!]!) {
   books(where: { id: { _in: $ids } }, limit: 5) {
     id
-    editions(limit: ${EDITION_SELECTION_LIMIT}) {${EDITION_FIELDS}
+    ${EDITION_SELECTION} {${EDITION_FIELDS}
     }
   }
 }`;
@@ -71,7 +84,7 @@ const FIND_BOOK_BY_HARDCOVER_ID_QUERY = `
 query FindBookById($id: Int!) {
   books(where: { id: { _eq: $id } }, limit: 1) {
     id
-    editions(limit: ${EDITION_SELECTION_LIMIT}) {${EDITION_FIELDS}
+    ${EDITION_SELECTION} {${EDITION_FIELDS}
     }
   }
 }`;
@@ -80,7 +93,7 @@ const FIND_BOOK_BY_HARDCOVER_SLUG_QUERY = `
 query FindBookBySlug($slug: String!) {
   books(where: { slug: { _eq: $slug } }, limit: 1) {
     id
-    editions(limit: ${EDITION_SELECTION_LIMIT}) {${EDITION_FIELDS}
+    ${EDITION_SELECTION} {${EDITION_FIELDS}
     }
   }
 }`;
@@ -89,7 +102,7 @@ const FIND_BOOK_EDITIONS_BY_HARDCOVER_ID_QUERY = `
 query FindBookEditionsById($id: Int!) {
   books(where: { id: { _eq: $id } }, limit: 1) {
     id
-    editions(limit: ${EDITION_SELECTION_LIMIT}) {${EDITION_FIELDS}
+    ${EDITION_SELECTION} {${EDITION_FIELDS}
     }
   }
 }`;
@@ -102,6 +115,7 @@ interface HardcoverEdition {
   isbn_10?: string | null;
   isbn_13?: string | null;
   audio_seconds?: number | null;
+  language_id?: number | null;
 }
 
 interface BooksQueryResult {
@@ -465,10 +479,17 @@ export class HardcoverBookMatchService {
   /**
    * Choose the edition that best represents the local book. Priority:
    * 1. exact ISBN match (strongest, most specific signal),
-   * 2. format alignment (don't track an audiobook against a text file, etc.),
-   * 3. closest page count to the local book,
-   * 4. presence of a page count (needed for page-based progress),
-   * 5. stable fallback to Hardcover's own ordering.
+   * 2. language alignment with the local book (never track an English read against a translation),
+   * 3. format alignment (don't track an audiobook against a text file, etc.),
+   * 4. closest page count to the local book,
+   * 5. presence of a page count (needed for page-based progress),
+   * 6. stable fallback to Hardcover's own ordering.
+   *
+   * Language outranks page count deliberately: a translation frequently has a page count nearer to
+   * the local file than any English edition does, so page proximity alone will happily select a
+   * foreign edition (a 377-page Catalan Guards! Guards! beat every English edition for a 376-page
+   * local book). Tracking the wrong language is far more visible to the user than a small
+   * page-count delta.
    */
   private pickBestEdition(editions: HardcoverEdition[], book: BookSyncData): HardcoverEdition | undefined {
     if (editions.length === 0) return undefined;
@@ -490,6 +511,13 @@ export class HardcoverBookMatchService {
   }
 
   private isBetterEdition(candidate: HardcoverEdition, current: HardcoverEdition, book: BookSyncData): boolean {
+    const desiredLanguageId = this.desiredLanguageId(book.language);
+    if (desiredLanguageId != null) {
+      const candidateAligned = this.editionMatchesLanguage(candidate, desiredLanguageId);
+      const currentAligned = this.editionMatchesLanguage(current, desiredLanguageId);
+      if (candidateAligned !== currentAligned) return candidateAligned;
+    }
+
     const wantAudio = this.localIsAudio(book.format);
     const candidateAligned = this.editionIsAudio(candidate) === wantAudio;
     const currentAligned = this.editionIsAudio(current) === wantAudio;
@@ -510,6 +538,31 @@ export class HardcoverBookMatchService {
 
     if ((candidatePages != null) !== (currentPages != null)) return candidatePages != null;
     return false;
+  }
+
+  /**
+   * Map the local book's free-text language onto a Hardcover language id.
+   *
+   * `book_metadata.language` is unnormalized in practice — real libraries hold `en`, `eng`,
+   * `English`, `en-US`, `EN-US`, and junk like `und`. Only English is mapped: it is the one id we
+   * can assert without shipping Hardcover's whole language table, and an unrecognized value must
+   * return null so the ranking falls through to the previous (page/format) behaviour rather than
+   * guessing. An untagged edition (`language_id` null) is never treated as a mismatch.
+   */
+  private desiredLanguageId(language: string | null | undefined): number | null {
+    if (!language) return null;
+    const normalized = language.trim().toLowerCase();
+    if (!normalized) return null;
+    const base = normalized.split(/[-_]/)[0]!;
+    if (base === 'en' || base === 'eng' || base === 'english') return HARDCOVER_ENGLISH_LANGUAGE_ID;
+    return null;
+  }
+
+  private editionMatchesLanguage(edition: HardcoverEdition, desiredLanguageId: number): boolean {
+    // Untagged editions are given the benefit of the doubt: a large share of Hardcover editions have
+    // no language_id, and penalising them would push good matches below known-foreign ones.
+    if (edition.language_id == null) return true;
+    return edition.language_id === desiredLanguageId;
   }
 
   private editionIsAudio(edition: HardcoverEdition): boolean {
