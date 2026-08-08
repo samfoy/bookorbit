@@ -20,6 +20,7 @@ export interface BookSyncData {
   hardcoverMetadataId: string | null;
   pageCount: number | null;
   format: string | null;
+  language: string | null;
   status: string;
   startedAt: Date | null;
   finishedAt: Date | null;
@@ -203,6 +204,7 @@ export class HardcoverRepository {
         hardcoverMetadataId: schema.bookMetadata.hardcoverId,
         pageCount: schema.bookMetadata.pageCount,
         format: schema.bookFiles.format,
+        language: schema.bookMetadata.language,
         status: includeUnread ? sql<string>`coalesce(${schema.userBookStatus.status}, 'unread')` : schema.userBookStatus.status,
         startedAt: schema.userBookStatus.startedAt,
         finishedAt: schema.userBookStatus.finishedAt,

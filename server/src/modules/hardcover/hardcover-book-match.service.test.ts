@@ -29,6 +29,7 @@ const baseBook = {
   progress: null,
   pageCount: null,
   format: null,
+  language: null,
 };
 
 describe('HardcoverBookMatchService', () => {
@@ -244,5 +245,133 @@ describe('HardcoverBookMatchService', () => {
     const result = await makeService().matchBook(1, 'tok', book);
 
     expect(result).toEqual({ hardcoverBookId: 123, hardcoverEditionId: 801, editionPages: 405, matchMethod: 'title' });
+  });
+
+  it('prefers an English edition over a closer-page-count translation (Guards! Guards! regression)', async () => {
+    // Real numbers from the live failure: a 377-page Catalan edition sat 1 page from the local
+    // 376-page book and beat every English edition, so Hardcover tracked "Guàrdies! Guàrdies!".
+    mockRepo.findBookState.mockResolvedValue(undefined);
+    mockClient.query.mockResolvedValueOnce({ search: { ids: [446212] } }).mockResolvedValueOnce({
+      books: [
+        {
+          id: 446212,
+          editions: [
+            { id: 32181214, pages: 377, isbn_13: '9788412235616', isbn_10: null, audio_seconds: null, language_id: 27 },
+            { id: 12591508, pages: 376, isbn_13: '9780061020643', isbn_10: null, audio_seconds: null, language_id: 1 },
+          ],
+        },
+      ],
+    });
+
+    const book = { ...baseBook, isbn13: null, isbn10: null, pageCount: 376, format: 'epub', language: 'English' };
+    const result = await makeService().matchBook(1, 'tok', book);
+
+    expect(result.hardcoverEditionId).toBe(12591508);
+  });
+
+  it('prefers the English edition even when a translation is much closer on page count', async () => {
+    mockRepo.findBookState.mockResolvedValue(undefined);
+    mockClient.query.mockResolvedValueOnce({ search: { ids: [446212] } }).mockResolvedValueOnce({
+      books: [
+        {
+          id: 446212,
+          editions: [
+            { id: 900, pages: 376, isbn_13: null, isbn_10: null, audio_seconds: null, language_id: 148 },
+            { id: 901, pages: 512, isbn_13: null, isbn_10: null, audio_seconds: null, language_id: 1 },
+          ],
+        },
+      ],
+    });
+
+    const book = { ...baseBook, isbn13: null, isbn10: null, pageCount: 376, format: 'epub', language: 'en-US' };
+    const result = await makeService().matchBook(1, 'tok', book);
+
+    expect(result.hardcoverEditionId).toBe(901);
+  });
+
+  it('still honours an exact ISBN match even when the edition is a translation', async () => {
+    // ISBN is a deliberate, specific signal: if the local file really IS the Spanish edition we
+    // must not "correct" it to English. Routed via the metadata_id path so pickBestEdition runs
+    // (a bare isbn13 uses the dedicated ISBN query, which returns the ISBN-filtered edition).
+    mockRepo.findBookState.mockResolvedValue(undefined);
+    mockClient.query.mockResolvedValueOnce({
+      books: [
+        {
+          id: 55,
+          editions: [
+            { id: 700, pages: 300, isbn_13: '9788497931861', isbn_10: null, audio_seconds: null, language_id: 148 },
+            { id: 701, pages: 300, isbn_13: '9780061020643', isbn_10: null, audio_seconds: null, language_id: 1 },
+          ],
+        },
+      ],
+    });
+
+    const book = {
+      ...baseBook,
+      isbn13: '9788497931861',
+      isbn10: null,
+      hardcoverMetadataId: '55',
+      pageCount: 300,
+      format: 'epub',
+      language: 'Spanish; Castilian',
+    };
+    const result = await makeService().matchBook(1, 'tok', book);
+
+    expect(result.hardcoverEditionId).toBe(700);
+  });
+
+  it('does not penalise editions with no language_id', async () => {
+    mockRepo.findBookState.mockResolvedValue(undefined);
+    mockClient.query.mockResolvedValueOnce({ search: { ids: [77] } }).mockResolvedValueOnce({
+      books: [
+        {
+          id: 77,
+          editions: [
+            { id: 810, pages: 400, isbn_13: null, isbn_10: null, audio_seconds: null, language_id: null },
+            { id: 811, pages: 900, isbn_13: null, isbn_10: null, audio_seconds: null, language_id: 1 },
+          ],
+        },
+      ],
+    });
+
+    const book = { ...baseBook, isbn13: null, isbn10: null, pageCount: 400, format: 'epub', language: 'en' };
+    const result = await makeService().matchBook(1, 'tok', book);
+
+    expect(result.hardcoverEditionId).toBe(810);
+  });
+
+  it('falls back to page ranking when the local language is unrecognised', async () => {
+    mockRepo.findBookState.mockResolvedValue(undefined);
+    mockClient.query.mockResolvedValueOnce({ search: { ids: [88] } }).mockResolvedValueOnce({
+      books: [
+        {
+          id: 88,
+          editions: [
+            { id: 820, pages: 401, isbn_13: null, isbn_10: null, audio_seconds: null, language_id: 47 },
+            { id: 821, pages: 900, isbn_13: null, isbn_10: null, audio_seconds: null, language_id: 1 },
+          ],
+        },
+      ],
+    });
+
+    const book = { ...baseBook, isbn13: null, isbn10: null, pageCount: 400, format: 'epub', language: 'und' };
+    const result = await makeService().matchBook(1, 'tok', book);
+
+    expect(result.hardcoverEditionId).toBe(820);
+  });
+
+  it('orders edition selection by reader count so popular editions survive truncation', async () => {
+    // Guards! Guards! has 77 editions but the query fetches 50. Without an explicit order the
+    // widely-read English edition was absent from the candidate set entirely.
+    mockRepo.findBookState.mockResolvedValue(undefined);
+    mockClient.query.mockResolvedValue({ books: [{ id: 700, editions: [{ id: 901, pages: 512, language_id: 1 }] }] });
+
+    const book = { ...baseBook, isbn13: null, isbn10: null, hardcoverMetadataId: '700' };
+    await makeService().matchBook(1, 'tok', book);
+
+    // client.query(userId, token, query, variables) -> the GraphQL document is arg index 2.
+    const queryArg = mockClient.query.mock.calls[0]![2];
+    expect(queryArg).toContain('users_count: desc');
+    expect(queryArg).toContain('language_id');
   });
 });
