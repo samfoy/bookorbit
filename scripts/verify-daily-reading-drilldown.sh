@@ -55,6 +55,9 @@ if [ "$IN_CONTAINER" != "1" ]; then
 
   DOCKER_RUN="docker run --rm \
     -e DRILLDOWN_GATE_IN_CONTAINER=1 \
+    -u $(id -u):$(id -g) \
+    -e HOME=/tmp \
+    -e npm_config_cache=/tmp/.npm \
     $MOUNTS \
     -w $REPO_ROOT \
     node:24-alpine sh scripts/verify-daily-reading-drilldown.sh"
