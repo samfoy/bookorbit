@@ -5,6 +5,7 @@ function makeService() {
     getSummary: vi.fn().mockResolvedValue('summary'),
     getDailyReading: vi.fn().mockResolvedValue('daily'),
     getDailyReadingByBook: vi.fn().mockResolvedValue('daily-by-book'),
+    getDailyReadingDetail: vi.fn().mockResolvedValue('daily-detail'),
     getReadingHeatmap: vi.fn().mockResolvedValue('heatmap'),
     getReadingSourceDistribution: vi.fn().mockResolvedValue('source-distribution'),
     getPeakReadingHours: vi.fn().mockResolvedValue('peak-hours'),
@@ -32,12 +33,14 @@ describe('UserStatisticsController', () => {
     const filter = { libraryIds: [1, 2] } as never;
     const daily = { ...filter, days: 30 } as never;
     const timeline = { ...filter, year: 2026, week: 10 } as never;
+    const dayDetail = { ...filter, day: '2026-04-10' } as never;
     const goal = { ...daily, goalBooks: 18 } as never;
     const updateDto = { startedAt: '2026-04-10T10:00:00.000Z', endedAt: '2026-04-10T10:30:00.000Z' } as never;
 
     await expect(controller.getSummary(user, filter)).resolves.toBe('summary');
     await expect(controller.getDailyReading(user, daily)).resolves.toBe('daily');
     await expect(controller.getDailyReadingByBook(user, daily)).resolves.toBe('daily-by-book');
+    await expect(controller.getDailyReadingDetail(user, dayDetail)).resolves.toBe('daily-detail');
     await expect(controller.getReadingHeatmap(user, daily)).resolves.toBe('heatmap');
     await expect(controller.getReadingSourceDistribution(user, daily)).resolves.toBe('source-distribution');
     await expect(controller.getPeakHours(user, daily)).resolves.toBe('peak-hours');
@@ -58,6 +61,7 @@ describe('UserStatisticsController', () => {
     expect(service.getSummary).toHaveBeenCalledWith(user, filter);
     expect(service.getDailyReading).toHaveBeenCalledWith(user, daily);
     expect(service.getDailyReadingByBook).toHaveBeenCalledWith(user, daily);
+    expect(service.getDailyReadingDetail).toHaveBeenCalledWith(user, dayDetail);
     expect(service.getReadingHeatmap).toHaveBeenCalledWith(user, daily);
     expect(service.getReadingSourceDistribution).toHaveBeenCalledWith(user, daily);
     expect(service.getPeakReadingHours).toHaveBeenCalledWith(user, daily);

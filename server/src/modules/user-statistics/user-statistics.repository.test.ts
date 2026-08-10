@@ -491,4 +491,55 @@ describe('UserStatisticsRepository', () => {
       }),
     ]);
   });
+
+  it('returns the day detail session rows for a single day', async () => {
+    const rows = [
+      {
+        sessionId: 91,
+        bookId: 7,
+        bookTitle: 'Dune',
+        bookFormat: 'EPUB',
+        source: 'kobo',
+        startedAt: new Date('2026-04-12T15:00:00.000Z'),
+        endedAt: new Date('2026-04-12T15:30:00.000Z'),
+        durationSeconds: 1800,
+        progressDelta: 1.5,
+        endProgress: 42,
+        day: '2026-04-12',
+      },
+    ];
+    const db = makeDb([rows]);
+    const repo = new UserStatisticsRepository(db as never);
+    vi.spyOn(repo as any, 'getAccessibleLibraryIds').mockResolvedValue([3]);
+
+    await expect(repo.getDailyReadingDetail(5, false, [3], '2026-04-12', 'America/Los_Angeles')).resolves.toEqual(rows);
+  });
+
+  it('compiles day detail SQL with a timezone-resolved day window, ordering and a bounded limit', async () => {
+    const calls: Array<{ text: string; params: unknown[] }> = [];
+    const fakeClient = {
+      query: vi.fn().mockImplementation((cfg: { text: string }, params: unknown[]) => {
+        calls.push({ text: cfg.text, params });
+        return Promise.resolve({ rows: [] });
+      }),
+    };
+    const db = drizzle({ client: fakeClient as never, schema });
+    const repo = new UserStatisticsRepository(db as never);
+
+    await expect(repo.getDailyReadingDetail(5, true, [2], '2026-04-12', 'America/Los_Angeles')).resolves.toEqual([]);
+
+    expect(calls).toHaveLength(1);
+    const [{ text, params }] = calls;
+    // Ungrouped row listing: the converted day is selected but never grouped on, so the
+    // Postgres 42803 failure mode for a parameterized AT TIME ZONE cannot apply here.
+    expect(text).toContain('"reading_sessions"."started_at" AT TIME ZONE $1');
+    expect(text.match(/AT TIME ZONE/g)).toHaveLength(1);
+    expect(params.filter((param) => param === 'America/Los_Angeles')).toHaveLength(1);
+    expect(text).not.toContain('group by');
+    expect(text).toContain('order by "reading_sessions"."started_at"');
+    expect(text).toContain('limit');
+    // The window is the user's local day, not the UTC day.
+    expect(params).toContain('2026-04-12T07:00:00.000Z');
+    expect(params).toContain('2026-04-13T07:00:00.000Z');
+  });
 });

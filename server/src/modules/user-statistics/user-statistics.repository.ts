@@ -54,12 +54,18 @@ type SessionTimelineItemRow = {
 type SessionTimelineSessionRow = SessionTimelineItemRow & {
   libraryId: number;
 };
+type DailyReadingDetailRow = SessionTimelineItemRow & {
+  day: string;
+  progressDelta: number | null;
+  endProgress: number | null;
+};
 type SessionTimelineConflictRow = {
   sessionId: number;
   startedAt: Date;
   endedAt: Date;
 };
 const RECENT_DAILY_AGGREGATION_DAYS = 2;
+const DAILY_READING_DETAIL_MAX_SESSIONS = 500;
 
 @Injectable()
 export class UserStatisticsRepository {
@@ -521,7 +527,12 @@ export class UserStatisticsRepository {
    * reading-goal widget counts), so goal progress includes books finished on a device or
    * imported from Hardcover/StoryGraph that never logged a >=99% reader session.
    */
-  async getMonthlyFinishedBooks(userId: number, isSuperuser: boolean, filterLibraryIds?: number[], days = 365): Promise<UserCompletionTimelinePoint[]> {
+  async getMonthlyFinishedBooks(
+    userId: number,
+    isSuperuser: boolean,
+    filterLibraryIds?: number[],
+    days = 365,
+  ): Promise<UserCompletionTimelinePoint[]> {
     const accessible = await this.getAccessibleLibraryIds(userId, isSuperuser);
     const libraryFilter = this.libraryFilter(this.intersectLibraryIds(accessible, filterLibraryIds));
     const since = this.sinceDateForDays(days);
@@ -717,6 +728,45 @@ export class UserStatisticsRepository {
       .from(sessionDays)
       .groupBy(sessionDays.day, sessionDays.bookId, sessionDays.bookTitle)
       .orderBy(sessionDays.day, sessionDays.bookId);
+  }
+
+  async getDailyReadingDetail(
+    userId: number,
+    isSuperuser: boolean,
+    filterLibraryIds: number[] | undefined,
+    day: string,
+    timeZone = 'UTC',
+    limit = DAILY_READING_DETAIL_MAX_SESSIONS,
+  ): Promise<DailyReadingDetailRow[]> {
+    const accessible = await this.getAccessibleLibraryIds(userId, isSuperuser);
+    const libraryFilter = this.libraryFilter(this.intersectLibraryIds(accessible, filterLibraryIds));
+    const resolvedTimeZone = resolveTimeZone(timeZone, 'UTC');
+    const range = getDayRangeForDateKeys([day], resolvedTimeZone);
+    if (!range) return [];
+
+    return this.db
+      .select({
+        sessionId: readingSessions.id,
+        bookId: readingSessions.bookId,
+        bookTitle: bookMetadata.title,
+        bookFormat: sql<string | null>`nullif(${bookFiles.format}, '')`,
+        source: readingSessions.source,
+        startedAt: readingSessions.startedAt,
+        endedAt: readingSessions.endedAt,
+        durationSeconds: readingSessions.durationSeconds,
+        progressDelta: readingSessions.progressDelta,
+        endProgress: readingSessions.endProgress,
+        day: sql<string>`(${readingSessions.startedAt} AT TIME ZONE ${resolvedTimeZone})::date::text`,
+      })
+      .from(readingSessions)
+      .leftJoin(bookFiles, eq(bookFiles.id, readingSessions.bookFileId))
+      .innerJoin(books, eq(books.id, readingSessions.bookId))
+      .leftJoin(bookMetadata, eq(bookMetadata.bookId, readingSessions.bookId))
+      .where(
+        and(eq(readingSessions.userId, userId), gte(readingSessions.startedAt, range.start), lt(readingSessions.startedAt, range.end), libraryFilter),
+      )
+      .orderBy(readingSessions.startedAt)
+      .limit(limit);
   }
 
   async getReadingPacePoints(userId: number, isSuperuser: boolean, filterLibraryIds?: number[], days = 1825): Promise<UserReadingPacePoint[]> {

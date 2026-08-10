@@ -8,6 +8,7 @@ import type {
   UserCompletionRaceBook,
   UserCompletionTimelinePoint,
   UserDailyBookReadingStat,
+  UserDailyReadingDetail,
   UserDailyReadingStat,
   UserFavoriteDayStat,
   UserGenreReadingTimeItem,
@@ -29,8 +30,9 @@ import { READING_SESSION_SOURCE_BUCKETS, emptySourceBucketRecord, toReadingSessi
 
 import type { RequestUser } from '../../common/types/request-user';
 import { StatsCache } from '../../common/cache/stats-cache';
-import { resolveTimeZone } from '../../common/utils/timezone.utils';
+import { isDateKey, resolveTimeZone } from '../../common/utils/timezone.utils';
 import type { UserDailyReadingQueryDto } from './dto/user-daily-reading-query.dto';
+import type { UserDailyReadingDetailQueryDto } from './dto/user-daily-reading-detail-query.dto';
 import type { UserGoalTrajectoryQueryDto } from './dto/user-goal-trajectory-query.dto';
 import type { UserSessionTimelineQueryDto } from './dto/user-session-timeline-query.dto';
 import type { UpdateUserSessionTimelineSessionDto } from './dto/update-user-session-timeline-session.dto';
@@ -171,6 +173,42 @@ export class UserStatisticsService {
     return this.cache.get(String(user.id), key, () =>
       this.repo.getDailyReadingSecondsByBook(user.id, user.isSuperuser, query.libraryIds, days, timeZone),
     );
+  }
+
+  async getDailyReadingDetail(user: RequestUser, query: UserDailyReadingDetailQueryDto): Promise<UserDailyReadingDetail> {
+    if (!isDateKey(query.day)) {
+      throw new BadRequestException('day must be a valid YYYY-MM-DD date');
+    }
+    const timeZone = resolveTimeZone((user.settings as { timezone?: unknown } | undefined)?.timezone, 'UTC');
+    const key = this.buildUserCacheKey('daily-reading-detail', user, {
+      libraries: this.normalizeLibraryIds(query.libraryIds),
+      day: query.day,
+      timeZone,
+    });
+    return this.cache.get(String(user.id), key, async () => {
+      const rows = await this.repo.getDailyReadingDetail(user.id, user.isSuperuser, query.libraryIds, query.day, timeZone);
+      const bySource = emptySourceBucketRecord();
+      let totalSeconds = 0;
+      const sessions = rows.map((row) => {
+        const bucket = toReadingSessionSourceBucket(row.source);
+        bySource[bucket] += row.durationSeconds;
+        totalSeconds += row.durationSeconds;
+        return {
+          sessionId: row.sessionId,
+          bookId: row.bookId,
+          bookTitle: row.bookTitle,
+          bookFormat: row.bookFormat,
+          source: bucket,
+          startedAt: row.startedAt.toISOString(),
+          endedAt: row.endedAt.toISOString(),
+          durationSeconds: row.durationSeconds,
+          progressDelta: row.progressDelta === null ? null : this.roundProgressDelta(row.progressDelta),
+          endProgress: row.endProgress === null ? null : this.roundProgressDelta(row.endProgress),
+        };
+      });
+
+      return { day: query.day, totalSeconds, sessionsCount: sessions.length, bySource, sessions };
+    });
   }
 
   async getReadingHeatmap(user: RequestUser, query: UserDailyReadingQueryDto): Promise<UserDailyReadingStat[]> {
@@ -598,7 +636,9 @@ export class UserStatisticsService {
     const days = query.days ?? SESSION_ARCHETYPES_DEFAULT_DAYS;
     const timeZone = resolveTimeZone((user.settings as { timezone?: unknown } | undefined)?.timezone, 'UTC');
     const key = this.buildUserCacheKey('session-archetypes', user, { libraries: this.normalizeLibraryIds(query.libraryIds), days, timeZone });
-    return this.cache.get(String(user.id), key, () => this.repo.getSessionArchetypePoints(user.id, user.isSuperuser, query.libraryIds, days, timeZone));
+    return this.cache.get(String(user.id), key, () =>
+      this.repo.getSessionArchetypePoints(user.id, user.isSuperuser, query.libraryIds, days, timeZone),
+    );
   }
 
   async getGenreReadingTime(user: RequestUser, query: UserDailyReadingQueryDto): Promise<UserGenreReadingTimeItem[]> {
