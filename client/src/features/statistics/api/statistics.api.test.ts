@@ -32,6 +32,7 @@ import {
   fetchLibraryIntegrityGauge,
   fetchAcquisitionLagScatter,
   fetchUserSessionArchetypes,
+  fetchUserDailyReadingDetail,
   fetchLargestBooks,
   fetchTopSeries,
 } from './statistics.api'
@@ -703,5 +704,24 @@ describe('fetchTopSeries', () => {
     mockedApi.mockResolvedValue(mockErrorResponse())
 
     await expect(fetchTopSeries(filters)).rejects.toThrow('Statistics request failed: 500')
+  })
+})
+
+describe('fetchUserDailyReadingDetail', () => {
+  it('returns parsed result and sends only the day param', async () => {
+    const data = { day: '2026-04-12', totalSeconds: 1800, sessionsCount: 1, bySource: {}, sessions: [] }
+    mockedApi.mockResolvedValue(mockOkResponse(data))
+
+    const result = await fetchUserDailyReadingDetail('2026-04-12')
+
+    const url = mockedApi.mock.calls[0][0] as string
+    expect(url).toBe('/api/v1/user-statistics/daily-reading-detail?day=2026-04-12')
+    expect(result).toEqual(data)
+  })
+
+  it('throws on non-ok response', async () => {
+    mockedApi.mockResolvedValue(mockErrorResponse(404))
+
+    await expect(fetchUserDailyReadingDetail('2026-04-12')).rejects.toThrow('User daily reading detail request failed: 404')
   })
 })
