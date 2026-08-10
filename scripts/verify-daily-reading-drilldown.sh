@@ -5,8 +5,14 @@
 # installed under musl (the rolldown/vitest native bindings are linux-x64-musl, so
 # the host's Node 22 glibc runtime cannot load them).
 #
-# Usage (from the repo root):
+# Usage (from the repo root, or from an AutoLoop worktree):
 #   sh scripts/verify-daily-reading-drilldown.sh
+#
+# node_modules is gitignored, so a `git worktree` checkout does NOT contain it. When
+# this script runs from a worktree it bind-mounts the dependency trees from the main
+# checkout at the same relative paths. pnpm links packages with RELATIVE symlinks
+# (e.g. server/node_modules/@nestjs/common -> ../../../node_modules/.pnpm/...), so
+# mounting all four trees at their normal locations resolves correctly.
 #
 # Every check is deterministic and fails loudly. No check may be skipped.
 set -eu
@@ -17,12 +23,56 @@ cd "$REPO_ROOT"
 IN_CONTAINER=${DRILLDOWN_GATE_IN_CONTAINER:-0}
 
 if [ "$IN_CONTAINER" != "1" ]; then
-  # Re-exec inside the container with the repo bind-mounted at the same path.
-  exec sg docker -c "docker run --rm \
+  # Resolve the main checkout: for a worktree, --git-common-dir points at the primary
+  # .git directory, whose parent holds the installed node_modules.
+  GIT_COMMON=$(git rev-parse --git-common-dir 2>/dev/null || echo "")
+  if [ -n "$GIT_COMMON" ]; then
+    MAIN_ROOT=$(cd "$(dirname "$GIT_COMMON")" && pwd)
+  else
+    MAIN_ROOT="$REPO_ROOT"
+  fi
+
+  if [ ! -d "$MAIN_ROOT/node_modules" ]; then
+    echo "GATE FAIL: no node_modules found in $MAIN_ROOT - install dependencies first" >&2
+    exit 1
+  fi
+
+  MOUNTS="-v $REPO_ROOT:$REPO_ROOT"
+  if [ "$MAIN_ROOT" != "$REPO_ROOT" ]; then
+    echo "(running from a worktree; mounting node_modules from $MAIN_ROOT)"
+    # Mounted READ-WRITE on purpose. The toolchain writes several scratch paths inside
+    # node_modules -- vue-tsc puts .tsbuildinfo in client/node_modules/.tmp, and Vite
+    # bundles the config through client/node_modules/.vite-temp before loading it.
+    # Read-only mounts fail these with EROFS, and tmpfs overlays cannot help because a
+    # tmpfs target must already exist inside the parent mount (runc cannot mkdir a new
+    # mountpoint under a read-only rootfs, which fails the container with exit 125).
+    # Only build caches are written, never package contents.
+    MOUNTS="$MOUNTS -v $MAIN_ROOT/node_modules:$REPO_ROOT/node_modules"
+    MOUNTS="$MOUNTS -v $MAIN_ROOT/server/node_modules:$REPO_ROOT/server/node_modules"
+    MOUNTS="$MOUNTS -v $MAIN_ROOT/client/node_modules:$REPO_ROOT/client/node_modules"
+    MOUNTS="$MOUNTS -v $MAIN_ROOT/packages/types/node_modules:$REPO_ROOT/packages/types/node_modules"
+  fi
+
+  DOCKER_RUN="docker run --rm \
     -e DRILLDOWN_GATE_IN_CONTAINER=1 \
-    -v $REPO_ROOT:$REPO_ROOT \
+    $MOUNTS \
     -w $REPO_ROOT \
     node:24-alpine sh scripts/verify-daily-reading-drilldown.sh"
+
+  # Re-exec inside the container with the repo bind-mounted at the same path.
+  #
+  # This user is in the docker group but the login shell predates that change, so
+  # docker normally needs `sg docker -c`. IMPORTANT: use the ABSOLUTE path
+  # /usr/bin/sg (a symlink to newgrp). A plain `sg` resolves to ~/.local/bin/sg,
+  # which is ast-grep, and fails with "unrecognized subcommand 'docker'".
+  if docker info >/dev/null 2>&1; then
+    exec sh -c "$DOCKER_RUN"
+  elif [ -x /usr/bin/sg ]; then
+    exec /usr/bin/sg docker -c "$DOCKER_RUN"
+  else
+    echo "GATE FAIL: cannot access docker (no direct access and /usr/bin/sg missing)" >&2
+    exit 1
+  fi
 fi
 
 fail() {
@@ -31,6 +81,8 @@ fail() {
 }
 
 echo "== [1/8] shared types build =="
+# tsc writes packages/types/dist, which must be writable even when node_modules is
+# mounted read-only. dist is part of the checkout, so it is writable.
 (cd packages/types && node_modules/.bin/tsc -p tsconfig.json) || fail "packages/types build failed"
 
 echo "== [2/8] server type-check =="
