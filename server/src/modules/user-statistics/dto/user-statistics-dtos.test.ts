@@ -5,6 +5,7 @@ import { validate } from 'class-validator';
 
 import { UpdateUserSessionTimelineSessionDto } from './update-user-session-timeline-session.dto';
 import { UserDailyReadingQueryDto } from './user-daily-reading-query.dto';
+import { UserDailyReadingDetailQueryDto } from './user-daily-reading-detail-query.dto';
 import { UserGoalTrajectoryQueryDto } from './user-goal-trajectory-query.dto';
 import { UserSessionTimelineQueryDto } from './user-session-timeline-query.dto';
 import { UserStatisticsFilterQueryDto } from './user-statistics-filter-query.dto';
@@ -56,6 +57,19 @@ describe('User statistics DTOs', () => {
     expect(timeline.libraryIds).toEqual([9]);
     expect(await validate(timeline)).toEqual([]);
     expect((await validate(badTimeline)).length).toBeGreaterThan(0);
+  });
+
+  it('requires a well-formed day on the daily reading detail query', async () => {
+    const valid = plainToInstance(UserDailyReadingDetailQueryDto, { day: '2026-04-12', libraryIds: '4' });
+    const missingDay = plainToInstance(UserDailyReadingDetailQueryDto, { libraryIds: '4' });
+    const malformedDay = plainToInstance(UserDailyReadingDetailQueryDto, { day: '2026-4-2' });
+    const nonStringDay = plainToInstance(UserDailyReadingDetailQueryDto, { day: 20260412 });
+
+    expect(valid.libraryIds).toEqual([4]);
+    expect(await validate(valid)).toEqual([]);
+    expect((await validate(missingDay)).length).toBeGreaterThan(0);
+    expect((await validate(malformedDay)).length).toBeGreaterThan(0);
+    expect((await validate(nonStringDay)).length).toBeGreaterThan(0);
   });
 
   it('requires ISO timestamps when updating timeline sessions', async () => {

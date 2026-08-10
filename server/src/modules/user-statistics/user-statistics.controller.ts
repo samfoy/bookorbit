@@ -3,6 +3,7 @@ import { Body, Controller, Get, Param, ParseIntPipe, Patch, Query } from '@nestj
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { RequestUser } from '../../common/types/request-user';
 import { UserDailyReadingQueryDto } from './dto/user-daily-reading-query.dto';
+import { UserDailyReadingDetailQueryDto } from './dto/user-daily-reading-detail-query.dto';
 import { UserGoalTrajectoryQueryDto } from './dto/user-goal-trajectory-query.dto';
 import { UserSessionTimelineQueryDto } from './dto/user-session-timeline-query.dto';
 import { UpdateUserSessionTimelineSessionDto } from './dto/update-user-session-timeline-session.dto';
@@ -26,6 +27,11 @@ export class UserStatisticsController {
   @Get('daily-reading-by-book')
   getDailyReadingByBook(@CurrentUser() user: RequestUser, @Query() query: UserDailyReadingQueryDto) {
     return this.userStatisticsService.getDailyReadingByBook(user, query);
+  }
+
+  @Get('daily-reading-detail')
+  getDailyReadingDetail(@CurrentUser() user: RequestUser, @Query() query: UserDailyReadingDetailQueryDto) {
+    return this.userStatisticsService.getDailyReadingDetail(user, query);
   }
 
   @Get('reading-heatmap')

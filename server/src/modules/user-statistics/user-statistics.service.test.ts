@@ -1,3 +1,5 @@
+import { BadRequestException } from '@nestjs/common';
+
 import { UserStatisticsService } from './user-statistics.service';
 
 describe('UserStatisticsService', () => {
@@ -50,6 +52,102 @@ describe('UserStatisticsService', () => {
 
     expect(repo.getDailyReadingSecondsByBook).toHaveBeenCalledWith(123, false, [1], 30, 'America/Los_Angeles');
     expect(result).toEqual(rows);
+  });
+
+  it('maps day detail rows into totals, source buckets and ISO timestamps', async () => {
+    const repo = {
+      getDailyReadingDetail: vi.fn().mockResolvedValue([
+        {
+          sessionId: 91,
+          bookId: 7,
+          bookTitle: 'Dune',
+          bookFormat: 'EPUB',
+          source: 'kobo',
+          startedAt: new Date('2026-04-12T15:00:00.000Z'),
+          endedAt: new Date('2026-04-12T15:30:00.000Z'),
+          durationSeconds: 1800,
+          progressDelta: 1.234567,
+          endProgress: 42.5,
+          day: '2026-04-12',
+        },
+        {
+          sessionId: 92,
+          bookId: 8,
+          bookTitle: null,
+          bookFormat: null,
+          source: null,
+          startedAt: new Date('2026-04-12T18:00:00.000Z'),
+          endedAt: new Date('2026-04-12T18:10:00.000Z'),
+          durationSeconds: 600,
+          progressDelta: null,
+          endProgress: null,
+          day: '2026-04-12',
+        },
+      ]),
+    };
+    const service = new UserStatisticsService(repo as any);
+    const user = { id: 123, isSuperuser: false, settings: { timezone: 'America/Los_Angeles' } } as any;
+
+    const result = await service.getDailyReadingDetail(user, { day: '2026-04-12', libraryIds: [1] });
+
+    expect(repo.getDailyReadingDetail).toHaveBeenCalledWith(123, false, [1], '2026-04-12', 'America/Los_Angeles');
+    expect(result).toEqual({
+      day: '2026-04-12',
+      totalSeconds: 2400,
+      sessionsCount: 2,
+      bySource: { bookorbit: 600, koreader: 0, kobo: 1800, crosspoint: 0, audiobookshelf: 0 },
+      sessions: [
+        {
+          sessionId: 91,
+          bookId: 7,
+          bookTitle: 'Dune',
+          bookFormat: 'EPUB',
+          source: 'kobo',
+          startedAt: '2026-04-12T15:00:00.000Z',
+          endedAt: '2026-04-12T15:30:00.000Z',
+          durationSeconds: 1800,
+          progressDelta: 1.2346,
+          endProgress: 42.5,
+        },
+        {
+          sessionId: 92,
+          bookId: 8,
+          bookTitle: null,
+          bookFormat: null,
+          source: 'bookorbit',
+          startedAt: '2026-04-12T18:00:00.000Z',
+          endedAt: '2026-04-12T18:10:00.000Z',
+          durationSeconds: 600,
+          progressDelta: null,
+          endProgress: null,
+        },
+      ],
+    });
+  });
+
+  it('caches day detail per day and timezone', async () => {
+    const repo = { getDailyReadingDetail: vi.fn().mockResolvedValue([]) };
+    const service = new UserStatisticsService(repo as any);
+    const user = { id: 5, isSuperuser: false, settings: { timezone: 'America/Los_Angeles' } } as any;
+
+    await service.getDailyReadingDetail(user, { day: '2026-04-12', libraryIds: [2, 1] });
+    await service.getDailyReadingDetail(user, { day: '2026-04-12', libraryIds: [1, 2] });
+    expect(repo.getDailyReadingDetail).toHaveBeenCalledTimes(1);
+
+    await service.getDailyReadingDetail(user, { day: '2026-04-13', libraryIds: [1, 2] });
+    expect(repo.getDailyReadingDetail).toHaveBeenCalledTimes(2);
+
+    const otherZone = { id: 5, isSuperuser: false, settings: { timezone: 'Europe/Berlin' } } as any;
+    await service.getDailyReadingDetail(otherZone, { day: '2026-04-12', libraryIds: [1, 2] });
+    expect(repo.getDailyReadingDetail).toHaveBeenCalledTimes(3);
+  });
+
+  it('rejects a malformed day that slips past DTO validation', async () => {
+    const repo = { getDailyReadingDetail: vi.fn() };
+    const service = new UserStatisticsService(repo as any);
+
+    await expect(service.getDailyReadingDetail({ id: 5, isSuperuser: false } as any, { day: '2026-02-31' })).rejects.toThrow(BadRequestException);
+    expect(repo.getDailyReadingDetail).not.toHaveBeenCalled();
   });
 
   it('returns a contiguous daily heatmap window with zero-filled days', async () => {
@@ -257,10 +355,10 @@ describe('UserStatisticsService', () => {
     const repo = { getMonthlyFinishedBooks: vi.fn().mockResolvedValue([]) };
 
     const service = new UserStatisticsService(repo as any);
-    const result = await service.getGoalTrajectory(
-      { id: 123, isSuperuser: false, settings: { dashboardConfig: { readingGoal: 100 } } } as any,
-      { days: 120, libraryIds: [] },
-    );
+    const result = await service.getGoalTrajectory({ id: 123, isSuperuser: false, settings: { dashboardConfig: { readingGoal: 100 } } } as any, {
+      days: 120,
+      libraryIds: [],
+    });
 
     expect(result.goalBooks).toBe(100);
   });

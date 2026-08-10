@@ -171,3 +171,24 @@ export interface ReadingTimeBreakdownGenre {
   readingSeconds: number;
   authors: ReadingTimeBreakdownAuthor[];
 }
+
+export interface UserDailyReadingDetailSession {
+  sessionId: number;
+  bookId: number;
+  bookTitle: string | null;
+  bookFormat: string | null;
+  source: ReadingSessionSourceBucket;
+  startedAt: string;
+  endedAt: string;
+  durationSeconds: number;
+  progressDelta: number | null;
+  endProgress: number | null;
+}
+
+export interface UserDailyReadingDetail {
+  day: string;
+  totalSeconds: number;
+  sessionsCount: number;
+  bySource: Record<ReadingSessionSourceBucket, number>;
+  sessions: UserDailyReadingDetailSession[];
+}
