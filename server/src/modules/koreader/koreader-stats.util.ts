@@ -6,6 +6,24 @@ export const KOREADER_MAX_EVENT_DURATION_SECONDS = 86400;
 export const KOREADER_MIN_SESSION_SECONDS = 10;
 export const KOREADER_BACKFILL_EVENT_THRESHOLD = 20;
 
+// --- Navigation (scrub) detection -------------------------------------------------
+// Page-stats uploaders report one event per rendered page, and cannot distinguish a
+// page turn from a seek: dragging a progress slider or holding page-forward emits the
+// same event shape as reading, just with a much larger page stride. Treating those as
+// reading produced two visible defects on Crosspoint/CrossInk devices:
+//   * a session that ended mid-seek reported the seek's landing page as its
+//     endProgress, so a LATER session could show LOWER progress than an earlier one;
+//   * pace (progressDelta / duration) reported seek speed, e.g. 34%/hr.
+// A stride is treated as navigation when it exceeds both a multiple of the session's
+// own median stride (self-calibrating: font size, device and book all change the
+// natural stride) and a floor fraction of the book (guards tiny-median sessions).
+export const KOREADER_NAVIGATION_STRIDE_MULTIPLIER = 5;
+export const KOREADER_NAVIGATION_MIN_FRACTION = 0.005;
+/** Below this many events a median stride is not meaningful, so nothing is classified. */
+export const KOREADER_NAVIGATION_MIN_EVENTS = 4;
+/** Reading time after a jump that proves it was a real relocation, not a scrub. */
+export const KOREADER_NAVIGATION_SETTLE_SECONDS = 60;
+
 // Map a page-stats uploader's self-reported deviceModel to a reading-session source.
 // Crosspoint/CrossInk firmware (Xteink X3/X4) speaks the same KOReader page-stats
 // protocol as the official plugin, so it arrives on the /koreader/plugin/page-stats
@@ -65,20 +83,28 @@ export function computeClusterMetrics(cluster: KoreaderPageEvent[], deviceId: st
   const first = cluster[0]!;
   let endEpoch = first.startTime;
   let durationSum = 0;
-  let last = first;
 
   for (const event of cluster) {
     durationSum += event.durationSeconds;
     endEpoch = Math.max(endEpoch, event.startTime + event.durationSeconds);
-    if (event.startTime >= last.startTime) last = event;
   }
 
   // Sum of page durations excludes idle gaps inside the cluster; the wall-clock cap keeps the
   // existing reading_sessions invariant that duration never exceeds endedAt - startedAt.
   const wallClockSeconds = endEpoch - first.startTime;
   const durationSeconds = Math.min(durationSum, wallClockSeconds);
-  const endProgress = last.totalPages > 0 ? clamp(round2((last.page / last.totalPages) * 100), 0, 100) : null;
-  const progressDelta = last.totalPages > 0 ? clamp(round2(((last.page - first.page) / last.totalPages) * 100), -100, 100) : null;
+
+  // Position is taken from the last event that represents READING, so a session that ended
+  // while the reader was seeking does not report the seek's landing page as its progress.
+  const ordered = orderEvents(cluster);
+  const settled = trimTrailingNavigation(ordered);
+  const last = settled[settled.length - 1]!;
+  const totalPages = last.totalPages;
+
+  const endProgress = totalPages > 0 ? clamp(round2((last.page / totalPages) * 100), 0, 100) : null;
+  // Delta counts only reading strides: navigation is movement through the book, not progress
+  // earned by reading, and including it makes pace report seek speed.
+  const progressDelta = totalPages > 0 ? clamp(round2((sumReadingStrides(settled) / totalPages) * 100), -100, 100) : null;
 
   return {
     sessionId: buildSessionId(deviceId, bookFileId, first.startTime),
@@ -107,4 +133,83 @@ function round2(value: number): number {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+function orderEvents(cluster: KoreaderPageEvent[]): KoreaderPageEvent[] {
+  return [...cluster].sort((a, b) => a.startTime - b.startTime || a.page - b.page);
+}
+
+function median(values: number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[mid - 1]! + sorted[mid]!) / 2 : sorted[mid]!;
+}
+
+/**
+ * Page-stride size above which a step is navigation (a seek) rather than a page turn.
+ * Calibrated from the session's own median stride so it adapts to font size, device and
+ * book, with a floor fraction of the book so a session of tiny strides cannot make the
+ * threshold collapse toward zero. Returns Infinity when the sample is too small to judge,
+ * which disables classification rather than guessing.
+ */
+function navigationStrideThreshold(events: KoreaderPageEvent[]): number {
+  if (events.length < KOREADER_NAVIGATION_MIN_EVENTS) return Number.POSITIVE_INFINITY;
+  const strides = pageStrides(events)
+    .map(Math.abs)
+    .filter((stride) => stride > 0);
+  if (strides.length === 0) return Number.POSITIVE_INFINITY;
+  const totalPages = events[events.length - 1]!.totalPages;
+  return Math.max(KOREADER_NAVIGATION_STRIDE_MULTIPLIER * median(strides), KOREADER_NAVIGATION_MIN_FRACTION * totalPages);
+}
+
+function pageStrides(events: KoreaderPageEvent[]): number[] {
+  const strides: number[] = [];
+  for (let i = 1; i < events.length; i += 1) {
+    strides.push(events[i]!.page - events[i - 1]!.page);
+  }
+  return strides;
+}
+
+/**
+ * Drop a trailing run of navigation events that never settled back into reading.
+ *
+ * A large jump FOLLOWED BY sustained reading is a genuine relocation - the reader really
+ * is at the new position - so it is kept. A jump at the tail of a session with no reading
+ * after it is an unfinished seek, and letting it define endProgress is what allowed a later
+ * session to report lower progress than an earlier one. Loops because a scrub usually emits
+ * several consecutive jumps.
+ */
+function trimTrailingNavigation(ordered: KoreaderPageEvent[]): KoreaderPageEvent[] {
+  const threshold = navigationStrideThreshold(ordered);
+  if (!Number.isFinite(threshold)) return ordered;
+
+  let events = ordered;
+  while (events.length >= 2) {
+    let lastJump = -1;
+    for (let i = events.length - 1; i >= 1; i -= 1) {
+      if (Math.abs(events[i]!.page - events[i - 1]!.page) > threshold) {
+        lastJump = i;
+        break;
+      }
+    }
+    if (lastJump === -1) break;
+
+    const settleSeconds = events.slice(lastJump + 1).reduce((sum, event) => sum + event.durationSeconds, 0);
+    if (settleSeconds >= KOREADER_NAVIGATION_SETTLE_SECONDS) break;
+
+    events = events.slice(0, lastJump);
+  }
+
+  // Never discard the whole cluster: a session must still report a position.
+  return events.length > 0 ? events : ordered.slice(0, 1);
+}
+
+/** Net page movement from reading only, excluding navigation jumps. */
+function sumReadingStrides(events: KoreaderPageEvent[]): number {
+  const threshold = navigationStrideThreshold(events);
+  if (!Number.isFinite(threshold)) {
+    return events.length > 0 ? events[events.length - 1]!.page - events[0]!.page : 0;
+  }
+  return pageStrides(events).reduce((sum, stride) => (Math.abs(stride) <= threshold ? sum + stride : sum), 0);
 }
