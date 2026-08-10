@@ -6724,7 +6724,6 @@
       "streakValue": "no days | {count} day | {count} days",
       "chartTitle": "Reading time per day",
       "byBookTitle": "Time by book",
-      "otherBooks": "Other ({count} books)",
       "unknownBook": "Unknown book",
       "tooltipTotal": "Total",
       "yAxisMinutes": "min",

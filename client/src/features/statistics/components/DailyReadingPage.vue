@@ -13,7 +13,6 @@ import { useUserDailyReadingByBook } from '../composables/useUserDailyReadingByB
 import { useUserDailyReadingDayDetail } from '../composables/useUserDailyReadingDayDetail'
 
 const RANGE_OPTIONS = [30, 90, 180, 365] as const
-const MAX_BOOK_SERIES = 8
 const LEGEND_LABEL_MAX_CHARS = 28
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
@@ -27,7 +26,14 @@ const { data, loading, error } = useUserDailyReadingByBook(days)
 const selectedDay = ref<string | null>(null)
 const { data: dayDetail, loading: dayDetailLoading, error: dayDetailError, reload: reloadDayDetail } = useUserDailyReadingDayDetail(selectedDay)
 
-const palette = computed(() => getThemePalette(themeStore.resolvedTheme, themeStore.accent))
+// Now that every book gets its own series, the base 10-colour theme palette can run out
+// and make two books share a colour. Append a lighter and a darker variant so adjacent
+// series stay distinguishable well past a typical number of concurrently-read books.
+const palette = computed(() => {
+  const mode = themeStore.resolvedTheme
+  const accent = themeStore.accent
+  return [...getThemePalette(mode, accent), ...getThemePalette(mode, accent, 0.72, 1.16), ...getThemePalette(mode, accent, 1.18, 0.84)]
+})
 
 function setRange(value: number) {
   days.value = value
@@ -106,13 +112,16 @@ const dayKeys = computed(() => {
 
 interface BookGroup {
   key: string
-  bookId: number | null
+  bookId: number
   label: string
   totalSeconds: number
   sessionsCount: number
   byDay: Map<string, number>
 }
 
+// Every book gets its own series. There is deliberately no "top N + Other" bucket:
+// an aggregated row cannot be clicked through to a book and hides which title the
+// time belongs to, which is the whole point of this page.
 const bookGroups = computed<BookGroup[]>(() => {
   const byBook = new Map<number, { label: string; totalSeconds: number; sessionsCount: number; byDay: Map<string, number> }>()
   for (const row of data.value) {
@@ -126,42 +135,19 @@ const bookGroups = computed<BookGroup[]>(() => {
     entry.byDay.set(row.day, (entry.byDay.get(row.day) ?? 0) + row.readingSeconds)
   }
 
-  const ranked = [...byBook.entries()].sort((a, b) => b[1].totalSeconds - a[1].totalSeconds)
-  const groups: BookGroup[] = ranked.slice(0, MAX_BOOK_SERIES).map(([bookId, entry]) => ({
-    key: `book-${bookId}`,
-    bookId,
-    label: entry.label,
-    totalSeconds: entry.totalSeconds,
-    sessionsCount: entry.sessionsCount,
-    byDay: entry.byDay,
-  }))
-
-  const rest = ranked.slice(MAX_BOOK_SERIES)
-  if (rest.length > 0) {
-    const byDay = new Map<string, number>()
-    let totalSeconds = 0
-    let sessionsCount = 0
-    for (const [, entry] of rest) {
-      totalSeconds += entry.totalSeconds
-      sessionsCount += entry.sessionsCount
-      for (const [day, seconds] of entry.byDay) {
-        byDay.set(day, (byDay.get(day) ?? 0) + seconds)
-      }
-    }
-    groups.push({
-      key: 'other',
-      bookId: null,
-      label: t('statistics.dailyReading.otherBooks', { count: rest.length }),
-      totalSeconds,
-      sessionsCount,
-      byDay,
-    })
-  }
-  return groups
+  return [...byBook.entries()]
+    .sort((a, b) => b[1].totalSeconds - a[1].totalSeconds)
+    .map(([bookId, entry]) => ({
+      key: `book-${bookId}`,
+      bookId,
+      label: entry.label,
+      totalSeconds: entry.totalSeconds,
+      sessionsCount: entry.sessionsCount,
+      byDay: entry.byDay,
+    }))
 })
 
-function openBook(bookId: number | null) {
-  if (bookId == null) return
+function openBook(bookId: number) {
   void router.push({ name: 'book-detail', params: { bookId } })
 }
 
@@ -449,14 +435,11 @@ const daySelectOptions = computed(() =>
           <li v-for="book in bookTotals" :key="book.key">
             <button
               type="button"
-              class="flex w-full items-center gap-3 rounded-md px-2 py-1.5 text-left transition-colors enabled:hover:bg-muted/60 disabled:cursor-default"
-              :disabled="book.bookId == null"
+              class="hover:bg-muted/60 flex w-full items-center gap-3 rounded-md px-2 py-1.5 text-left transition-colors"
               @click="openBook(book.bookId)"
             >
               <span class="size-2.5 shrink-0 rounded-sm" :style="{ backgroundColor: book.color }" />
-              <span class="min-w-0 flex-1 truncate text-sm" :class="book.bookId != null ? 'hover:underline' : 'text-muted-foreground'">{{
-                book.label
-              }}</span>
+              <span class="min-w-0 flex-1 truncate text-sm hover:underline">{{ book.label }}</span>
               <span class="bg-muted hidden h-1.5 w-40 overflow-hidden rounded-full sm:block">
                 <span class="block h-full rounded-full" :style="{ width: `${book.sharePct}%`, backgroundColor: book.color }" />
               </span>
