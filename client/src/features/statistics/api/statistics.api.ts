@@ -12,6 +12,7 @@ import type {
   StatisticsSummary,
   UserCompletionTimelinePoint,
   UserDailyBookReadingStat,
+  UserDailyReadingDetail,
   UserDailyReadingStat,
   UserFavoriteDayStat,
   UserProgressFunnelComparison,
@@ -158,6 +159,14 @@ export async function fetchUserDailyReadingByBook(days: number): Promise<UserDai
   const res = await api(`/api/v1/user-statistics/daily-reading-by-book?${params.toString()}`)
   if (!res.ok) throw new Error(`User daily reading by book request failed: ${res.status}`)
   return res.json() as Promise<UserDailyBookReadingStat[]>
+}
+
+export async function fetchUserDailyReadingDetail(day: string): Promise<UserDailyReadingDetail> {
+  const params = new URLSearchParams()
+  params.set('day', day)
+  const res = await api(`/api/v1/user-statistics/daily-reading-detail?${params.toString()}`)
+  if (!res.ok) throw new Error(`User daily reading detail request failed: ${res.status}`)
+  return res.json() as Promise<UserDailyReadingDetail>
 }
 
 export async function fetchUserReadingSourceDistribution(filters: StatisticsFilterConfig): Promise<UserReadingSourceDistribution> {
