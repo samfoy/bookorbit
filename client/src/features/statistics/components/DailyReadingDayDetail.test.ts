@@ -3,7 +3,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 
 import type { UserDailyReadingDetail } from '@bookorbit/types'
 
-const mocks = vi.hoisted(() => ({ routerPush: vi.fn() }))
+const mocks = vi.hoisted(() => ({ routerPush: vi.fn<(to: unknown) => void>() }))
 
 vi.mock('vue-router', () => ({
   useRouter: () => ({ push: mocks.routerPush }),
