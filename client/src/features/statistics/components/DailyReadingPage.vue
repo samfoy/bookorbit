@@ -8,7 +8,9 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useThemeStore } from '@/stores/theme'
 import { getThemePalette } from '@/lib/echarts'
 import ChartEmptyState from './ChartEmptyState.vue'
+import DailyReadingDayDetail from './DailyReadingDayDetail.vue'
 import { useUserDailyReadingByBook } from '../composables/useUserDailyReadingByBook'
+import { useUserDailyReadingDayDetail } from '../composables/useUserDailyReadingDayDetail'
 
 const RANGE_OPTIONS = [30, 90, 180, 365] as const
 const MAX_BOOK_SERIES = 8
@@ -22,10 +24,43 @@ const themeStore = useThemeStore()
 const days = ref<number>(90)
 const { data, loading, error } = useUserDailyReadingByBook(days)
 
+const selectedDay = ref<string | null>(null)
+const { data: dayDetail, loading: dayDetailLoading, error: dayDetailError, reload: reloadDayDetail } = useUserDailyReadingDayDetail(selectedDay)
+
 const palette = computed(() => getThemePalette(themeStore.resolvedTheme, themeStore.accent))
 
 function setRange(value: number) {
   days.value = value
+  selectedDay.value = null
+}
+
+function selectDay(dayKey: string) {
+  selectedDay.value = dayKey === selectedDay.value ? null : dayKey
+}
+
+function handleChartClick(params: { dataIndex?: number }) {
+  const index = params?.dataIndex
+  if (typeof index !== 'number') return
+  const dayKey = dayKeys.value[index]
+  if (dayKey) selectDay(dayKey)
+}
+
+function handleDaySelectChange(event: Event) {
+  const value = (event.target as HTMLSelectElement).value
+  selectedDay.value = value || null
+}
+
+function handleClearDay() {
+  selectedDay.value = null
+}
+
+function handleBusiestDayClick() {
+  const busiest = summary.value.busiestDay
+  if (busiest) selectDay(busiest.day)
+}
+
+function handleRetryDayDetail() {
+  void reloadDayDetail()
 }
 
 // Local-calendar day keys: the server buckets sessions in the profile timezone,
@@ -74,37 +109,53 @@ interface BookGroup {
   bookId: number | null
   label: string
   totalSeconds: number
+  sessionsCount: number
   byDay: Map<string, number>
 }
 
 const bookGroups = computed<BookGroup[]>(() => {
-  const byBook = new Map<number, { label: string; totalSeconds: number; byDay: Map<string, number> }>()
+  const byBook = new Map<number, { label: string; totalSeconds: number; sessionsCount: number; byDay: Map<string, number> }>()
   for (const row of data.value) {
     let entry = byBook.get(row.bookId)
     if (!entry) {
-      entry = { label: row.bookTitle?.trim() || t('statistics.dailyReading.unknownBook'), totalSeconds: 0, byDay: new Map() }
+      entry = { label: row.bookTitle?.trim() || t('statistics.dailyReading.unknownBook'), totalSeconds: 0, sessionsCount: 0, byDay: new Map() }
       byBook.set(row.bookId, entry)
     }
     entry.totalSeconds += row.readingSeconds
+    entry.sessionsCount += row.sessionsCount
     entry.byDay.set(row.day, (entry.byDay.get(row.day) ?? 0) + row.readingSeconds)
   }
 
   const ranked = [...byBook.entries()].sort((a, b) => b[1].totalSeconds - a[1].totalSeconds)
-  const groups: BookGroup[] = ranked
-    .slice(0, MAX_BOOK_SERIES)
-    .map(([bookId, entry]) => ({ key: `book-${bookId}`, bookId, label: entry.label, totalSeconds: entry.totalSeconds, byDay: entry.byDay }))
+  const groups: BookGroup[] = ranked.slice(0, MAX_BOOK_SERIES).map(([bookId, entry]) => ({
+    key: `book-${bookId}`,
+    bookId,
+    label: entry.label,
+    totalSeconds: entry.totalSeconds,
+    sessionsCount: entry.sessionsCount,
+    byDay: entry.byDay,
+  }))
 
   const rest = ranked.slice(MAX_BOOK_SERIES)
   if (rest.length > 0) {
     const byDay = new Map<string, number>()
     let totalSeconds = 0
+    let sessionsCount = 0
     for (const [, entry] of rest) {
       totalSeconds += entry.totalSeconds
+      sessionsCount += entry.sessionsCount
       for (const [day, seconds] of entry.byDay) {
         byDay.set(day, (byDay.get(day) ?? 0) + seconds)
       }
     }
-    groups.push({ key: 'other', bookId: null, label: t('statistics.dailyReading.otherBooks', { count: rest.length }), totalSeconds, byDay })
+    groups.push({
+      key: 'other',
+      bookId: null,
+      label: t('statistics.dailyReading.otherBooks', { count: rest.length }),
+      totalSeconds,
+      sessionsCount,
+      byDay,
+    })
   }
   return groups
 })
@@ -169,6 +220,7 @@ watchEffect(() => {
   const colors = palette.value
   const totals = totalsByDay.value
 
+  const activeDay = selectedDay.value
   const series = groups.map((group, index) => ({
     name: group.label,
     type: 'bar',
@@ -178,7 +230,9 @@ watchEffect(() => {
     emphasis: { focus: 'series' },
     data: keys.map((day) => {
       const seconds = group.byDay.get(day) ?? 0
-      return seconds > 0 ? Number((seconds / 60).toFixed(1)) : 0
+      const value = seconds > 0 ? Number((seconds / 60).toFixed(1)) : 0
+      // Dim the non-selected days so the drill-down target stays obvious.
+      return activeDay && day !== activeDay ? { value, itemStyle: { opacity: 0.35 } } : value
     }),
   }))
 
@@ -244,6 +298,12 @@ const bookTotals = computed(() => {
     bookId: group.bookId,
     label: group.label,
     totalSeconds: group.totalSeconds,
+    sessionsCount: group.sessionsCount,
+    sessionsLabel: t('statistics.dailyReading.sessionsCountShort', { count: group.sessionsCount }, group.sessionsCount),
+    avgSessionLabel:
+      group.sessionsCount > 0
+        ? t('statistics.dailyReading.avgSessionLength', { duration: formatDuration(group.totalSeconds / group.sessionsCount) })
+        : null,
     sharePct: max > 0 ? Math.round((group.totalSeconds / max) * 100) : 0,
     color: palette.value[index % palette.value.length],
   }))
@@ -270,6 +330,22 @@ const summaryCards = computed(() => [
     value: t('statistics.dailyReading.streakValue', { count: summary.value.streak }, summary.value.streak),
   },
 ])
+
+const busiestDayCard = computed(() => {
+  const busiest = summary.value.busiestDay
+  return {
+    label: t('statistics.dailyReading.busiestDay'),
+    value: busiest ? `${formatDayLabel(busiest.day)} - ${formatDuration(busiest.seconds)}` : t('statistics.dailyReading.busiestDayNone'),
+    day: busiest?.day ?? null,
+  }
+})
+
+const daySelectOptions = computed(() =>
+  dayKeys.value
+    .filter((dayKey) => (totalsByDay.value.get(dayKey) ?? 0) > 0)
+    .map((dayKey) => ({ value: dayKey, label: `${formatDayLabel(dayKey)} - ${formatDuration(totalsByDay.value.get(dayKey) ?? 0)}` }))
+    .reverse(),
+)
 </script>
 
 <template>
@@ -325,12 +401,47 @@ const summaryCards = computed(() => [
         </div>
       </div>
 
-      <div class="bg-card text-card-foreground rounded-lg border p-4 shadow-sm">
-        <p class="text-sm font-semibold">{{ t('statistics.dailyReading.chartTitle') }}</p>
+      <div class="bg-card text-card-foreground flex flex-col gap-3 rounded-lg border p-4 shadow-sm">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p class="text-sm font-semibold">{{ t('statistics.dailyReading.chartTitle') }}</p>
+            <p class="text-muted-foreground text-xs">{{ t('statistics.dailyReading.dayDetailHint') }}</p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <button
+              v-if="busiestDayCard.day"
+              type="button"
+              class="text-muted-foreground hover:text-foreground hover:bg-muted/60 rounded-md border px-2.5 py-1 text-xs transition-colors"
+              @click="handleBusiestDayClick"
+            >
+              {{ busiestDayCard.label }}: {{ busiestDayCard.value }}
+            </button>
+            <label class="sr-only" for="daily-reading-day-select">{{ t('statistics.dailyReading.dayDetailSelectLabel') }}</label>
+            <select
+              id="daily-reading-day-select"
+              class="bg-background rounded-md border px-2 py-1 text-xs"
+              :value="selectedDay ?? ''"
+              @change="handleDaySelectChange"
+            >
+              <option value="">{{ t('statistics.dailyReading.dayDetailSelectLabel') }}</option>
+              <option v-for="dayOption in daySelectOptions" :key="dayOption.value" :value="dayOption.value">{{ dayOption.label }}</option>
+            </select>
+          </div>
+        </div>
         <div class="h-[380px] w-full">
-          <VChart :option autoresize style="height: 100%; width: 100%" />
+          <VChart :option autoresize style="height: 100%; width: 100%" @click="handleChartClick" />
         </div>
       </div>
+
+      <DailyReadingDayDetail
+        v-if="selectedDay"
+        :day="selectedDay"
+        :detail="dayDetail"
+        :loading="dayDetailLoading"
+        :error="dayDetailError"
+        @close="handleClearDay"
+        @retry="handleRetryDayDetail"
+      />
 
       <div class="bg-card text-card-foreground rounded-lg border p-4 shadow-sm">
         <p class="mb-3 text-sm font-semibold">{{ t('statistics.dailyReading.byBookTitle') }}</p>
@@ -348,6 +459,9 @@ const summaryCards = computed(() => [
               }}</span>
               <span class="bg-muted hidden h-1.5 w-40 overflow-hidden rounded-full sm:block">
                 <span class="block h-full rounded-full" :style="{ width: `${book.sharePct}%`, backgroundColor: book.color }" />
+              </span>
+              <span class="text-muted-foreground hidden w-32 shrink-0 text-right text-xs tabular-nums md:block">
+                {{ book.sessionsLabel }}<template v-if="book.avgSessionLabel"> &middot; {{ book.avgSessionLabel }}</template>
               </span>
               <span class="text-muted-foreground w-20 shrink-0 text-right text-sm tabular-nums">{{ formatDuration(book.totalSeconds) }}</span>
             </button>
