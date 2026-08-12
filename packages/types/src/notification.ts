@@ -21,6 +21,7 @@ export const NotificationType = {
   BulkRenameCompleted: "bulk_rename_completed",
   BulkRenameFailed: "bulk_rename_failed",
   AchievementUnlocked: "achievement_unlocked",
+  PhysicalDueSoon: "physical_due_soon",
 } as const;
 
 export type NotificationType = (typeof NotificationType)[keyof typeof NotificationType];
@@ -37,6 +38,7 @@ export const NOTIFICATION_CATEGORIES = {
   fileRename: [NotificationType.FileRenameCompleted, NotificationType.FileRenameFailed],
   bulkRename: [NotificationType.BulkRenameCompleted, NotificationType.BulkRenameFailed],
   achievements: [NotificationType.AchievementUnlocked],
+  physicalLoans: [NotificationType.PhysicalDueSoon],
 } as const;
 
 export type NotificationCategory = keyof typeof NOTIFICATION_CATEGORIES;

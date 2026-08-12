@@ -62,6 +62,19 @@ function classify(daysRemaining: number, onTrack: boolean): LoanUrgency {
   return 'comfortable';
 }
 
+export const PACE_WINDOW_DAYS = 7;
+
+/**
+ * Pages per day over the pace window. Sessions record progress as a percentage delta, so pages
+ * only exist once there is a page count to multiply by; without one the pace is zero rather than
+ * a guess.
+ */
+export function paceFromProgressDelta(progressDelta: number, effectivePageCount: number | null): number {
+  if (!effectivePageCount) return 0;
+  const pages = (progressDelta / 100) * effectivePageCount;
+  return Math.max(0, Math.round((pages / PACE_WINDOW_DAYS) * 100) / 100);
+}
+
 /**
  * Whole-day difference between two calendar day keys. Both keys are already timezone-resolved, so
  * this is deliberately plain UTC-midnight arithmetic and is immune to DST: a spring-forward day is

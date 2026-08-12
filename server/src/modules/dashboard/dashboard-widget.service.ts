@@ -3,6 +3,7 @@ import { Injectable } from '@nestjs/common';
 import type {
   CurrentlyReadingWidgetData,
   DiversityScoreWidgetData,
+  DueSoonWidgetData,
   HighlightOfTheDayWidgetData,
   LibraryOverviewWidgetData,
   LongWaitWidgetData,
@@ -33,6 +34,7 @@ import {
   selectChallenge,
 } from './dashboard-widget.calculations';
 import { DashboardWidgetRepository } from './dashboard-widget.repository';
+import { PhysicalLoanService } from '../physical-book/physical-loan.service';
 
 const DASHBOARD_LIVE_TTL_MS = 120_000;
 const DASHBOARD_STALE_TTL_MS = 300_000;
@@ -46,6 +48,7 @@ export class DashboardWidgetService {
   constructor(
     private readonly widgetRepo: DashboardWidgetRepository,
     private readonly libraryService: LibraryService,
+    private readonly physicalLoanService: PhysicalLoanService,
   ) {}
 
   private getContentFilters(user: RequestUser) {
@@ -207,6 +210,14 @@ export class DashboardWidgetService {
         data.uniqueLanguages,
       );
     });
+  }
+
+  /**
+   * Loan pressure changes when the reader logs pages, so this uses the live cache rather than the
+   * stale one: a due-soon card that lags five minutes behind a page log reads as broken.
+   */
+  async getDueSoon(user: RequestUser): Promise<DueSoonWidgetData> {
+    return this.liveCache.get(String(user.id), 'due-soon', async () => this.physicalLoanService.getDueSoon(user));
   }
 
   async getReadingRhythm(user: RequestUser): Promise<ReadingRhythmWidgetData> {

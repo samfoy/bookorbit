@@ -21,6 +21,7 @@ const WIDGET_NAME_KEYS: Record<WidgetType, WidgetNameKey> = {
   'library-overview': 'libraryOverview',
   'year-projection': 'yearProjection',
   'long-wait': 'longWait',
+  'due-soon': 'dueSoon',
 }
 
 const SHELF_NAME_KEYS: Record<ScrollerType, ShelfNameKey> = {

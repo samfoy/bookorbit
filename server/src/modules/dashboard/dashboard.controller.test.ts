@@ -38,6 +38,7 @@ function makeController() {
     getReadingDna: vi.fn(),
     getLongWait: vi.fn(),
     getDiversityScore: vi.fn(),
+    getDueSoon: vi.fn(),
     getReadingRhythm: vi.fn(),
   };
 
@@ -131,6 +132,7 @@ describe('DashboardController', () => {
       ['getReadingDna', { archetype: 'Reader', booksAnalyzed: 10 }],
       ['getLongWait', null],
       ['getDiversityScore', { score: 50, label: 'Curious Explorer' }],
+      ['getDueSoon', { entries: [] }],
       ['getReadingRhythm', { days: [], consistencyPercent: 0 }],
     ] as const)('%s delegates to widgetService', async (method, mockResult) => {
       const { controller, widgetService } = makeController();

@@ -1,6 +1,7 @@
 import type {
   CurrentlyReadingWidgetData,
   DiversityScoreWidgetData,
+  DueSoonWidgetData,
   HighlightOfTheDayWidgetData,
   LibraryOverviewWidgetData,
   LongWaitWidgetData,
@@ -77,6 +78,12 @@ export async function fetchLongWait(): Promise<LongWaitWidgetData | null> {
 export async function fetchDiversityScore(): Promise<DiversityScoreWidgetData> {
   const res = await api('/api/v1/dashboard/widgets/diversity-score')
   if (!res.ok) throw new Error('Failed to fetch diversity score')
+  return res.json()
+}
+
+export async function fetchDueSoon(): Promise<DueSoonWidgetData> {
+  const res = await api('/api/v1/dashboard/widgets/due-soon')
+  if (!res.ok) throw new Error('Failed to fetch due soon')
   return res.json()
 }
 

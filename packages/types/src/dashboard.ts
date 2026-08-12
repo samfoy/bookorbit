@@ -34,6 +34,7 @@ export const WIDGET_TYPE = {
   LIBRARY_OVERVIEW: "library-overview",
   YEAR_PROJECTION: "year-projection",
   LONG_WAIT: "long-wait",
+  DUE_SOON: "due-soon",
 } as const;
 
 export type WidgetType = (typeof WIDGET_TYPE)[keyof typeof WIDGET_TYPE];

@@ -43,9 +43,12 @@ function makeService() {
   const libraryService = {
     findAccessibleLibraryIds: vi.fn(),
   };
+  const physicalLoanService = {
+    getDueSoon: vi.fn().mockResolvedValue({ entries: [] }),
+  };
 
-  const service = new DashboardWidgetService(widgetRepo as never, libraryService as never);
-  return { service, widgetRepo, libraryService };
+  const service = new DashboardWidgetService(widgetRepo as never, libraryService as never, physicalLoanService as never);
+  return { service, widgetRepo, libraryService, physicalLoanService };
 }
 
 describe('DashboardWidgetService', () => {
@@ -442,6 +445,29 @@ describe('DashboardWidgetService', () => {
       await service.getLibraryOverview(userA);
       await service.getLibraryOverview(userB);
       expect(widgetRepo.getLibraryOverview).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('getDueSoon', () => {
+    it('delegates to the physical loan service', async () => {
+      const { service, physicalLoanService } = makeService();
+      const entries = [{ bookId: 55, title: 'Dune' }];
+      physicalLoanService.getDueSoon.mockResolvedValue({ entries });
+
+      const user = makeUser();
+      await expect(service.getDueSoon(user)).resolves.toEqual({ entries });
+      expect(physicalLoanService.getDueSoon).toHaveBeenCalledWith(user);
+    });
+
+    it('caches per user so a dashboard refresh does not re-query the loans', async () => {
+      const { service, physicalLoanService } = makeService();
+
+      await service.getDueSoon(makeUser());
+      await service.getDueSoon(makeUser());
+      expect(physicalLoanService.getDueSoon).toHaveBeenCalledTimes(1);
+
+      await service.getDueSoon(makeUser({ id: 99 }));
+      expect(physicalLoanService.getDueSoon).toHaveBeenCalledTimes(2);
     });
   });
 });

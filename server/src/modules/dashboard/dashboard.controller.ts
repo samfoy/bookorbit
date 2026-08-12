@@ -78,6 +78,11 @@ export class DashboardController {
     return this.widgetService.getDiversityScore(user);
   }
 
+  @Get('widgets/due-soon')
+  getDueSoon(@CurrentUser() user: RequestUser) {
+    return this.widgetService.getDueSoon(user);
+  }
+
   @Get('widgets/reading-rhythm')
   getReadingRhythm(@CurrentUser() user: RequestUser) {
     return this.widgetService.getReadingRhythm(user);

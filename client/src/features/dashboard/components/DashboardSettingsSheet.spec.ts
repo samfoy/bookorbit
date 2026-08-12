@@ -156,6 +156,7 @@ describe('DashboardSettingsSheet', () => {
       en.dashboard.settings.widgetNames.libraryOverview,
       en.dashboard.settings.widgetNames.yearProjection,
       en.dashboard.settings.widgetNames.longWait,
+      en.dashboard.settings.widgetNames.dueSoon,
     ])
   })
 
@@ -181,6 +182,7 @@ describe('DashboardSettingsSheet', () => {
       PT_WIDGET_NAMES.libraryOverview,
       PT_WIDGET_NAMES.yearProjection,
       PT_WIDGET_NAMES.longWait,
+      PT_WIDGET_NAMES.dueSoon,
     ])
 
     // Only meaningful for names Portuguese actually translates. A name that falls
