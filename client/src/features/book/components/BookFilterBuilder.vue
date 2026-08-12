@@ -19,7 +19,7 @@ import {
   type RuleOperator,
   type StaticRuleField,
 } from '@bookorbit/types'
-import { READ_STATUSES } from '@bookorbit/types'
+import { BOOK_MEDIUMS, PHYSICAL_ACQUISITIONS, READ_STATUSES } from '@bookorbit/types'
 import { useActiveCustomFields } from '@/features/book/composables/useActiveCustomFields'
 import { fieldLabel, operatorLabel } from '@/features/book/lib/filter-labels'
 import { providerIconPathSafe } from '@/features/book/lib/provider-icons'
@@ -44,7 +44,7 @@ const emit = defineEmits<{
 
 const MAX_DEPTH = 5
 const NUMERIC_FIELDS: RuleField[] = ['seriesIndex', 'publishedYear', 'pageCount', 'rating', 'communityRating', 'metadataScore']
-const DATE_FIELDS: RuleField[] = ['publishedDate', 'addedAt', 'startedAt', 'finishedAt']
+const DATE_FIELDS: RuleField[] = ['publishedDate', 'addedAt', 'startedAt', 'finishedAt', 'dueOn']
 const NO_VALUE_OPERATORS: RuleOperator[] = [
   'isEmpty',
   'isNotEmpty',
@@ -81,6 +81,20 @@ const READ_STATUS_LABELS = computed<Record<string, string>>(() => ({
   read: t('book.readStatus.read'),
   skimmed: t('book.readStatus.skimmed'),
   abandoned: t('book.readStatus.abandoned'),
+}))
+
+// medium and acquisition are closed enums, so they get a fixed dropdown rather than a typeahead.
+const ENUM_OPTIONS = computed<Partial<Record<RuleField, { values: readonly string[]; labels: Record<string, string>; placeholder: string }>>>(() => ({
+  medium: {
+    values: BOOK_MEDIUMS,
+    labels: Object.fromEntries(BOOK_MEDIUMS.map((value) => [value, t(`book.filter.mediumValues.${value}`)])),
+    placeholder: t('book.filter.selectMedium'),
+  },
+  acquisition: {
+    values: PHYSICAL_ACQUISITIONS,
+    labels: Object.fromEntries(PHYSICAL_ACQUISITIONS.map((value) => [value, t(`book.filter.acquisitionValues.${value}`)])),
+    placeholder: t('book.filter.selectAcquisition'),
+  },
 }))
 
 const COMMUNITY_RATING_PROVIDER_OPTIONS = computed<{ value: CommunityRatingProvider; label: string }[]>(() => [
@@ -545,6 +559,32 @@ function showValueToInput(operator: RuleOperator): boolean {
               <option value="" disabled>{{ t('book.filter.selectStatus') }}</option>
               <option v-for="status in READ_STATUSES" :key="status" :value="status" :disabled="node.rule.valueChips.includes(status)">
                 {{ READ_STATUS_LABELS[status] ?? status }}
+              </option>
+            </select>
+          </div>
+        </template>
+        <!-- Closed-enum dropdowns: medium, acquisition -->
+        <template v-else-if="ENUM_OPTIONS[node.rule.field] && COLLECTION_OPERATORS.includes(node.rule.operator)">
+          <div class="flex flex-wrap items-center gap-1 min-w-48 flex-1 rounded-md border border-input bg-background px-2 py-1.5">
+            <span
+              v-for="enumValue in node.rule.valueChips"
+              :key="enumValue"
+              class="flex items-center gap-1 h-5 px-1.5 rounded bg-primary/15 text-primary text-xs font-medium shrink-0"
+            >
+              {{ ENUM_OPTIONS[node.rule.field]?.labels[enumValue] ?? enumValue }}
+              <button type="button" class="text-primary hover:text-primary leading-none" @click="removeStatusChip(index, enumValue)">
+                <X :size="10" />
+              </button>
+            </span>
+            <select :value="''" class="h-7 flex-1 min-w-32 bg-background text-foreground text-sm outline-none" @change="addStatusChip(index, $event)">
+              <option value="" disabled>{{ ENUM_OPTIONS[node.rule.field]?.placeholder }}</option>
+              <option
+                v-for="enumValue in ENUM_OPTIONS[node.rule.field]?.values ?? []"
+                :key="enumValue"
+                :value="enumValue"
+                :disabled="node.rule.valueChips.includes(enumValue)"
+              >
+                {{ ENUM_OPTIONS[node.rule.field]?.labels[enumValue] ?? enumValue }}
               </option>
             </select>
           </div>

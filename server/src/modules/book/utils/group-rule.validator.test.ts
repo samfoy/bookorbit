@@ -23,7 +23,7 @@ import { validateGroupRule, groupRuleSchema } from './group-rule.validator';
  * The exhaustive `never` default ensures TypeScript raises a compile error when a
  * new operator is added to RuleOperator but not handled in this helper.
  */
-const DATE_FIELDS: RuleField[] = ['addedAt', 'startedAt', 'finishedAt', 'publishedDate'];
+const DATE_FIELDS: RuleField[] = ['addedAt', 'startedAt', 'finishedAt', 'publishedDate', 'dueOn'];
 
 function validRuleValue(operator: RuleOperator, field: RuleField): { value?: unknown; valueTo?: unknown } {
   switch (operator) {
@@ -323,8 +323,62 @@ describe('validateGroupRule', () => {
   });
 });
 
+describe('physical book fields', () => {
+  function group(rule: Record<string, unknown>) {
+    return { type: 'group', join: 'AND', rules: [{ type: 'rule', ...rule }] };
+  }
+
+  it('accepts a medium rule listing both mediums', () => {
+    expect(validateGroupRule(group({ field: 'medium', operator: 'includesAny', value: ['physical', 'file'] }))).toBeDefined();
+  });
+
+  it('accepts excluding a medium', () => {
+    expect(validateGroupRule(group({ field: 'medium', operator: 'excludesAll', value: ['physical'] }))).toBeDefined();
+  });
+
+  // medium is a set field, so the text operators that read naturally are still rejected.
+  it('rejects contains on medium', () => {
+    expect(() => validateGroupRule(group({ field: 'medium', operator: 'contains', value: 'physical' }))).toThrow(BadRequestException);
+  });
+
+  it('accepts an acquisition rule listing borrowed sources', () => {
+    expect(
+      validateGroupRule(group({ field: 'acquisition', operator: 'includesAny', value: ['borrowed_library', 'borrowed_personal'] })),
+    ).toBeDefined();
+  });
+
+  it('rejects an unknown operator for acquisition', () => {
+    expect(() => validateGroupRule(group({ field: 'acquisition', operator: 'eq', value: 'owned' }))).toThrow(BadRequestException);
+  });
+
+  it.each(['before', 'after'])('accepts a real date for dueOn with %s', (operator) => {
+    expect(validateGroupRule(group({ field: 'dueOn', operator, value: '2026-08-20' }))).toBeDefined();
+  });
+
+  it('accepts a dueOn range', () => {
+    expect(validateGroupRule(group({ field: 'dueOn', operator: 'between', value: '2026-08-01', valueTo: '2026-08-31' }))).toBeDefined();
+  });
+
+  it('accepts dueOn emptiness checks for books with no active loan', () => {
+    expect(validateGroupRule(group({ field: 'dueOn', operator: 'isEmpty' }))).toBeDefined();
+    expect(validateGroupRule(group({ field: 'dueOn', operator: 'isNotEmpty' }))).toBeDefined();
+  });
+
+  it('accepts a day count for dueOn withinLast rather than a date', () => {
+    expect(validateGroupRule(group({ field: 'dueOn', operator: 'withinLast', value: 7 }))).toBeDefined();
+  });
+
+  it('rejects a garbage dueOn date before it can reach SQL', () => {
+    expect(() => validateGroupRule(group({ field: 'dueOn', operator: 'before', value: 'next tuesday' }))).toThrow(BadRequestException);
+  });
+
+  it('rejects a dueOn range missing its upper bound', () => {
+    expect(() => validateGroupRule(group({ field: 'dueOn', operator: 'between', value: '2026-08-01' }))).toThrow(BadRequestException);
+  });
+});
+
 describe('date field value validation', () => {
-  const DATE_FIELDS_UNDER_TEST: RuleField[] = ['addedAt', 'startedAt', 'finishedAt', 'publishedDate'];
+  const DATE_FIELDS_UNDER_TEST: RuleField[] = ['addedAt', 'startedAt', 'finishedAt', 'publishedDate', 'dueOn'];
 
   it.each(DATE_FIELDS_UNDER_TEST)("rejects a 2-digit year for '%s' before/after/between (issue #787 regression)", (field) => {
     const before = { type: 'group', join: 'AND', rules: [{ type: 'rule', field, operator: 'before', value: '21-12-31' }] };

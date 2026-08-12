@@ -8,6 +8,7 @@ import type {
   ContentFilterRules,
   CustomMetadataFieldTypeMap,
   GroupRule,
+  PhysicalAcquisition,
   ReadStatus,
   Rule,
   RuleValue,
@@ -29,6 +30,7 @@ import {
   bookCommunityRatings,
   bookMetadata,
   bookNarrators,
+  bookPhysicalCopies,
   bookSeries,
   bookSeriesMemberships,
   books,
@@ -208,6 +210,12 @@ export class BookQueryBuilder {
         return this.lockStatusRuleToSql(operator);
       case 'seriesStatus':
         return this.seriesStatusRuleToSql(operator, userId);
+      case 'medium':
+        return this.textSetRuleToSql(books.medium, operator, value as string[]);
+      case 'acquisition':
+        return this.acquisitionRuleToSql(operator, value as string[], userId);
+      case 'dueOn':
+        return this.dueOnRuleToSql(operator, value as string | number, valueTo as string | number | undefined, userId, timeZone);
       default:
         throw new BadRequestException(`Unknown filter field: ${String(field)}`);
     }
@@ -814,6 +822,74 @@ export class BookQueryBuilder {
         return sql`coalesce(cardinality(${bookMetadata.lockedFields}), 0) = 0`;
       default:
         throw new BadRequestException(`Invalid operator '${operator}' for lockStatus field`);
+    }
+  }
+
+  private physicalCopyExistsSql(userId: number, whereClause?: SQL): SQL {
+    const predicates: SQL[] = [eq(bookPhysicalCopies.bookId, books.id), eq(bookPhysicalCopies.userId, userId)];
+    if (whereClause) predicates.push(whereClause);
+    const sq = this.db
+      .select({ one: sql`1` })
+      .from(bookPhysicalCopies)
+      .where(and(...predicates)!);
+    return sql`exists (${sq})`;
+  }
+
+  private acquisitionRuleToSql(operator: string, values: string[] | undefined, userId?: number): SQL {
+    if (userId === undefined) throw new BadRequestException('acquisition filter requires an authenticated user');
+    switch (operator) {
+      case 'includesAny':
+        if (!values?.length) return sql`1 = 0`;
+        return this.physicalCopyExistsSql(userId, inArray(bookPhysicalCopies.acquisition, values as PhysicalAcquisition[]));
+      case 'excludesAll':
+        if (!values?.length) return sql`1 = 1`;
+        return not(this.physicalCopyExistsSql(userId, inArray(bookPhysicalCopies.acquisition, values as PhysicalAcquisition[])));
+      default:
+        throw new BadRequestException(`Invalid operator '${operator}' for acquisition field`);
+    }
+  }
+
+  /**
+   * Only unreturned loans carry a live due date, so a returned copy reads as having none. This
+   * keeps "due before Friday" from matching books already back on the library shelf.
+   */
+  private dueOnRuleToSql(
+    operator: string,
+    value: string | number | undefined,
+    valueTo: string | number | undefined,
+    userId: number | undefined,
+    timeZone: string,
+  ): SQL {
+    if (userId === undefined) throw new BadRequestException('dueOn filter requires an authenticated user');
+    const activeLoan = (whereClause: SQL) =>
+      this.physicalCopyExistsSql(userId, and(isNull(bookPhysicalCopies.returnedOn), whereClause)!);
+    const dueOn = bookPhysicalCopies.dueOn;
+
+    switch (operator) {
+      case 'before':
+        return activeLoan(lt(dueOn, this.parseDateKey(value, operator, 'value', timeZone)));
+      case 'after':
+        return activeLoan(gt(dueOn, this.parseDateKey(value, operator, 'value', timeZone)));
+      case 'between': {
+        const from = this.parseDateKey(value, operator, 'value', timeZone);
+        const to = this.parseDateKey(valueTo, operator, 'valueTo', timeZone);
+        return activeLoan(and(gte(dueOn, from), lte(dueOn, to))!);
+      }
+      // Mirrors the other date fields: a trailing window ending today, in the user's timezone.
+      case 'withinLast': {
+        const days = typeof value === 'string' ? Number(value) : value;
+        this.assertNumber(days, operator, 'value');
+        if (days! < 0) throw new BadRequestException(`Operator '${operator}' requires a non-negative value`);
+        const wholeDays = Math.floor(days!);
+        const shiftDays = wholeDays > 0 ? wholeDays - 1 : 0;
+        return activeLoan(sql`${dueOn} >= (timezone(${timeZone}, now())::date - ${shiftDays}::int)`);
+      }
+      case 'isEmpty':
+        return not(activeLoan(isNotNull(dueOn)));
+      case 'isNotEmpty':
+        return activeLoan(isNotNull(dueOn));
+      default:
+        throw new BadRequestException(`Invalid operator '${operator}' for dueOn field`);
     }
   }
 

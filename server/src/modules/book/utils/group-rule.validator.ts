@@ -18,7 +18,7 @@ import { isDateKey } from '../../../common/utils/timezone.utils';
 
 const COMMUNITY_RATING_PROVIDER_VALUES = ['any', ...COMMUNITY_RATING_PROVIDER_KEYS] as const;
 
-const DATE_VALUE_FIELDS = new Set<StaticRuleField>(['addedAt', 'startedAt', 'finishedAt', 'publishedDate']);
+const DATE_VALUE_FIELDS = new Set<StaticRuleField>(['addedAt', 'startedAt', 'finishedAt', 'publishedDate', 'dueOn']);
 const DATE_VALUE_OPERATORS = new Set<RuleOperator>(['before', 'after', 'between']);
 const CUSTOM_NUMERIC_OPERATORS = new Set<RuleOperator>(['gt', 'gte', 'lt', 'lte']);
 const CUSTOM_DATE_OPERATORS = new Set<RuleOperator>(['before', 'after']);
