@@ -123,6 +123,33 @@ Adding a reading-session source value has been done twice before on this fork (`
 
 ## Work plan — 6 slices, commit after each
 
+> ⚠️ **WORKFLOW RULE (authoritative — a previous run died ignoring this).** The full gate
+> (`sh scripts/verify-physical-books.sh`) takes **~12 minutes**: server typecheck + client
+> vue-tsc + BOTH full suites. A previous run was killed by its iteration timeout while running
+> the full gate mid-slice, leaving 22 files of finished work uncommitted.
+>
+> **COMMIT FIRST, VALIDATE SECOND.**
+> 1. Write a slice's code.
+> 2. Run only the **cheap targeted** checks for it (seconds to ~1 min each).
+> 3. **COMMIT IMMEDIATELY.** A commit is cheap and recoverable; uncommitted work dies at an
+>    iteration boundary.
+> 4. Only run the FULL gate **once, at the very end**, after all slices are committed.
+>
+> Cheap targeted checks (all must run inside `node:24-alpine` with `node_modules` bind-mounted
+> exactly as the gate script does — host Node 22 is glibc and cannot load the musl bindings):
+> ```
+> (cd packages/types && node_modules/.bin/tsc -p tsconfig.json)
+> (cd server && node_modules/.bin/tsc --noEmit -p tsconfig.build.json)
+> (cd server && node_modules/.bin/vitest run src/modules/<module>)
+> (cd client && node_modules/.bin/vitest run <single-path>)
+> ```
+> Do NOT run `vitest run` with no path filter mid-slice — that is the 6-minute full suite.
+
+**SLICE 1 IS ALREADY DONE AND COMMITTED** (`a4df6401`) — schema, `books.medium`,
+`book_physical_copies`, migration `0064`, and `'physical'` across all three unions. Types build
+and server typecheck verified passing. **Do NOT redo, revert, or regenerate any of it, and do
+NOT create another migration for it.** Start at slice 2.
+
 Build in this order. Each slice must leave the repo green on the gate's baseline checks.
 
 ### Slice 1 — schema + the `'physical'` source
