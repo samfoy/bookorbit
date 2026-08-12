@@ -22,6 +22,7 @@ const BUCKET_TOKEN: Record<ReadingSessionSourceBucket, string> = {
   kobo: '--pill-kobo',
   crosspoint: '--pill-crosspoint',
   audiobookshelf: '--pill-audiobookshelf',
+  physical: '--pill-physical',
 }
 
 function formatDuration(seconds: number): string {

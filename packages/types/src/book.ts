@@ -26,6 +26,12 @@ export const READ_STATUSES = ["unread", "want_to_read", "reading", "on_hold", "r
 export type ReadStatus = (typeof READ_STATUSES)[number];
 export type ReadStatusSource = "auto" | "manual";
 
+// Discriminates file-backed books (ebook/audiobook on disk) from fileless physical copies.
+// Physical books are ordinary `books` rows so search, scopes, collections, series and
+// statistics keep working; only the file-resolution paths branch on this.
+export const BOOK_MEDIUMS = ["file", "physical"] as const;
+export type BookMedium = (typeof BOOK_MEDIUMS)[number];
+
 export type UserBookStatus = {
   status: ReadStatus;
   source: ReadStatusSource;
@@ -37,7 +43,7 @@ export type UserBookStatus = {
 export const READING_ATTEMPT_OUTCOMES = ["completed", "skimmed", "abandoned"] as const;
 export type ReadingAttemptOutcome = (typeof READING_ATTEMPT_OUTCOMES)[number];
 
-export const READING_ATTEMPT_ORIGINS = ["manual", "bookorbit", "kobo", "koreader", "hardcover", "migration"] as const;
+export const READING_ATTEMPT_ORIGINS = ["manual", "bookorbit", "kobo", "koreader", "hardcover", "migration", "physical"] as const;
 export type ReadingAttemptOrigin = (typeof READING_ATTEMPT_ORIGINS)[number];
 
 export type ReadingAttempt = {

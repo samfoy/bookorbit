@@ -449,6 +449,13 @@
       "when": 1785961185744,
       "tag": "0063_crosspoint_audiobookshelf_sources",
       "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1786568878252,
+      "tag": "0064_physical_books",
+      "breakpoints": true
     }
   ]
 }

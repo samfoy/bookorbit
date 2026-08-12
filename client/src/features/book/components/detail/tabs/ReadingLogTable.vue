@@ -93,6 +93,7 @@ const SESSION_SOURCE_PILLS = computed<Record<ReadingSessionSource, { label: stri
   manual: { label: t('book.detail.readingLog.table.sourceManual'), class: 'border-border bg-muted text-muted-foreground' },
   crosspoint: { label: 'Crosspoint', class: 'border-[var(--pill-crosspoint)]/40 bg-[var(--pill-crosspoint)]/10 text-[var(--pill-crosspoint)]' },
   audiobookshelf: { label: 'Audiobookshelf', class: 'border-[var(--pill-audiobookshelf)]/40 bg-[var(--pill-audiobookshelf)]/10 text-[var(--pill-audiobookshelf)]' },
+  physical: { label: t('book.detail.readingLog.table.sourcePhysical'), class: 'border-[var(--pill-physical)]/40 bg-[var(--pill-physical)]/10 text-[var(--pill-physical)]' },
 }))
 
 const showSource = computed(() => props.sessions.some((s) => s.source != null))

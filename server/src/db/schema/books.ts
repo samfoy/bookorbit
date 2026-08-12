@@ -1,6 +1,8 @@
 import { sql } from 'drizzle-orm';
 import { bigint, check, foreignKey, index, integer, numeric, pgTable, serial, timestamp, unique, uniqueIndex, varchar } from 'drizzle-orm/pg-core';
 
+import type { BookMedium } from '@bookorbit/types';
+
 import { libraryFolders, libraries } from './libraries';
 
 export const books = pgTable(
@@ -17,6 +19,8 @@ export const books = pgTable(
     primaryAuthorSortName: varchar('primary_author_sort_name', { length: 500 }),
     folderPath: varchar('folder_path', { length: 4096 }).notNull(),
     status: varchar('status', { length: 20 }).notNull().default('present'),
+    // 'file' = backed by a file on disk | 'physical' = a real-world copy with no file.
+    medium: varchar('medium', { length: 20 }).$type<BookMedium>().notNull().default('file'),
     addedAt: timestamp('added_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true })
       .defaultNow()
@@ -28,6 +32,7 @@ export const books = pgTable(
     unique('books_id_library_folder_id_unique').on(t.id, t.libraryFolderId),
     index('books_primary_file_id_idx').on(t.primaryFileId),
     index('books_library_status_idx').on(t.libraryId, t.status),
+    index('books_library_medium_idx').on(t.libraryId, t.medium),
     index('books_library_added_at_idx').on(t.libraryId, sql`${t.addedAt} desc`),
     index('books_library_visible_added_id_idx')
       .on(t.libraryId, sql`${t.addedAt} desc`, t.id)
@@ -44,6 +49,7 @@ export const books = pgTable(
       name: 'books_library_folder_library_fk',
     }),
     check('books_status_chk', sql`${t.status} in ('present', 'missing', 'processing')`),
+    check('books_medium_chk', sql`${t.medium} in ('file', 'physical')`),
   ],
 );
 

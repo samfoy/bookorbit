@@ -2393,6 +2393,7 @@
         "kobo": "Kobo",
         "crosspoint": "Crosspoint",
         "audiobookshelf": "Audiobookshelf",
+        "physical": "Physical",
         "unknown": "Unknown"
       },
       "formats": "Formats",
@@ -4042,6 +4043,7 @@
           "title": "Sessions",
           "sourceWeb": "Web",
           "sourceManual": "Manual",
+          "sourcePhysical": "Physical",
           "colDate": "Date",
           "colDateMobile": "Date",
           "colDuration": "Duration",

@@ -30,6 +30,7 @@ export * from "./opds";
 export * from "./kobo";
 export * from "./koreader";
 export * from "./book-dock";
+export * from "./physical-book";
 export * from "./file-write";
 export * from "./epub";
 export * from "./author";

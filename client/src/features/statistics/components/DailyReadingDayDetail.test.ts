@@ -20,7 +20,7 @@ function makeDetail(overrides: Partial<UserDailyReadingDetail> = {}): UserDailyR
     day: '2026-04-12',
     totalSeconds: 2400,
     sessionsCount: 2,
-    bySource: { bookorbit: 600, koreader: 0, kobo: 1800, crosspoint: 0, audiobookshelf: 0 },
+    bySource: { bookorbit: 600, koreader: 0, kobo: 1800, crosspoint: 0, audiobookshelf: 0, physical: 0 },
     sessions: [
       {
         sessionId: 91,
