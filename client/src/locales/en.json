@@ -5066,7 +5066,8 @@
         "diversityScore": "Diversity Score",
         "libraryOverview": "Library Overview",
         "yearProjection": "Year Projection",
-        "longWait": "The Long Wait"
+        "longWait": "The Long Wait",
+        "dueSoon": "Due Soon"
       },
       "shelfNames": {
         "recentlyAdded": "Recently Added",
@@ -5146,6 +5147,19 @@
       "monthlyChallenge": {
         "title": "Monthly Challenge",
         "complete": "Complete!"
+      },
+      "dueSoon": {
+        "title": "Due Soon",
+        "empty": "No borrowed books are due right now.",
+        "overdue": "Overdue",
+        "dueToday": "Due today",
+        "dueTomorrow": "Due tomorrow",
+        "dueInDays": "Due in {count}d",
+        "pagesLeft": "{count, plural, one {# page left} other {# pages left}}",
+        "pacePerDay": "{count}/day to finish",
+        "onTrack": "On track",
+        "noPageCount": "No page count yet",
+        "finished": "Finished"
       },
       "neglectedGems": {
         "title": "Neglected Gems",
@@ -6304,6 +6318,10 @@
         "achievements": {
           "label": "Achievements",
           "description": "When you unlock a new reading achievement."
+        },
+        "physicalLoans": {
+          "label": "Borrowed book due dates",
+          "description": "When a borrowed physical book is coming due or is overdue."
         }
       }
     }

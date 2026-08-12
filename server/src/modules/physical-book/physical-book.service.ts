@@ -18,6 +18,7 @@ import { BulkImportPhysicalBooksDto, CreatePhysicalBookDto, LogProgressDto, Upda
 import { PhysicalBookRepository } from './physical-book.repository';
 import { buildCopySummary } from './utils/copy-summary.utils';
 import { candidateToMetadataFields, pickBestCandidate } from './utils/candidate-merge.utils';
+import { PACE_WINDOW_DAYS, paceFromProgressDelta } from './utils/loan-urgency.utils';
 
 // An ISBN lookup fans out across every provider; without a ceiling one slow provider would hold
 // the request open for as long as its own timeout allows.
@@ -25,7 +26,6 @@ const LOOKUP_TIMEOUT_MS = 12_000;
 const LOOKUP_MAX_CANDIDATES = 12;
 // Bulk imports run provider lookups, so concurrency stays low to avoid tripping provider throttles.
 const BULK_CONCURRENCY = 3;
-const PACE_WINDOW_DAYS = 7;
 
 export interface CreatePhysicalBookResult {
   bookId: number;
@@ -306,8 +306,7 @@ export class PhysicalBookService {
     if (!range) return 0;
 
     const progressDelta = await this.repo.sumProgressDeltaBetween(user.id, bookId, range.start, range.end);
-    const pages = (progressDelta / 100) * effectivePageCount;
-    return Math.max(0, Math.round((pages / PACE_WINDOW_DAYS) * 100) / 100);
+    return paceFromProgressDelta(progressDelta, effectivePageCount);
   }
 
   private resolveUserTimeZone(user: RequestUser): string {

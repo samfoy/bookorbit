@@ -51,6 +51,7 @@ const WIDGET_KEY_BY_TYPE: Record<WidgetType, string> = {
   'library-overview': 'libraryOverview',
   'year-projection': 'yearProjection',
   'long-wait': 'longWait',
+  'due-soon': 'dueSoon',
 }
 
 // A widget whose Portuguese name genuinely differs from English. Assertions that a

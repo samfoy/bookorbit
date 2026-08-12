@@ -1,4 +1,5 @@
 import type { BookCard } from "./book";
+import type { DueSoonWidgetData } from "./physical-book";
 
 export const SCROLLER_TYPE = {
   RECENTLY_ADDED: "recently-added",
@@ -64,6 +65,7 @@ export const WIDGET_TYPE = {
   LIBRARY_OVERVIEW: "library-overview",
   YEAR_PROJECTION: "year-projection",
   LONG_WAIT: "long-wait",
+  DUE_SOON: "due-soon",
 } as const;
 
 export type WidgetType = (typeof WIDGET_TYPE)[keyof typeof WIDGET_TYPE];
@@ -224,6 +226,7 @@ export interface WidgetDataByType {
   "library-overview": LibraryOverviewWidgetData;
   "year-projection": YearProjectionWidgetData;
   "long-wait": LongWaitWidgetData | null;
+  "due-soon": DueSoonWidgetData;
 }
 
 export const DASHBOARD_WIDGET_BATCH_MAX = WIDGET_TYPES.length;

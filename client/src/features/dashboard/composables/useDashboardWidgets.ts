@@ -18,6 +18,7 @@ const DEFAULT_WIDGETS: WidgetConfig[] = [
   { id: '10', type: 'library-overview', enabled: false, order: 10 },
   { id: '11', type: 'year-projection', enabled: false, order: 11 },
   { id: '12', type: 'long-wait', enabled: false, order: 12 },
+  { id: '13', type: 'due-soon', enabled: false, order: 13 },
 ]
 
 const VALID_TYPES = new Set<WidgetType>(WIDGET_TYPES)

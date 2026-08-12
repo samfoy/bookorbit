@@ -41,6 +41,12 @@ export type PhysicalCopyDerived = {
 
 export type PhysicalCopySummary = PhysicalCopy & PhysicalCopyDerived;
 
+export const DUE_SOON_LIMIT = 10;
+
+export type DueSoonWidgetData = {
+  entries: DueSoonEntry[];
+};
+
 export type DueSoonEntry = {
   bookId: number;
   title: string;

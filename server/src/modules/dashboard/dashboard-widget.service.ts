@@ -5,6 +5,7 @@ import type {
   DashboardWidgetBatchResponse,
   DashboardWidgetBatchResult,
   DiversityScoreWidgetData,
+  DueSoonWidgetData,
   HighlightOfTheDayWidgetData,
   LibraryOverviewWidgetData,
   LongWaitWidgetData,
@@ -38,6 +39,7 @@ import {
   selectChallenge,
 } from './dashboard-widget.calculations';
 import { DashboardWidgetRepository } from './dashboard-widget.repository';
+import { PhysicalLoanService } from '../physical-book/physical-loan.service';
 
 const DASHBOARD_LIVE_TTL_MS = 120_000;
 const DASHBOARD_STALE_TTL_MS = 300_000;
@@ -54,6 +56,7 @@ export class DashboardWidgetService {
   constructor(
     private readonly widgetRepo: DashboardWidgetRepository,
     private readonly libraryService: LibraryService,
+    private readonly physicalLoanService: PhysicalLoanService,
   ) {}
 
   private getContentFilters(user: RequestUser) {
@@ -217,6 +220,14 @@ export class DashboardWidgetService {
     });
   }
 
+  /**
+   * Loan pressure changes when the reader logs pages, so this uses the live cache rather than the
+   * stale one: a due-soon card that lags five minutes behind a page log reads as broken.
+   */
+  async getDueSoon(user: RequestUser): Promise<DueSoonWidgetData> {
+    return this.liveCache.get(String(user.id), 'due-soon', async () => this.physicalLoanService.getDueSoon(user));
+  }
+
   async getReadingRhythm(user: RequestUser): Promise<ReadingRhythmWidgetData> {
     return this.liveCache.get(String(user.id), 'reading-rhythm', async () => {
       const accessibleLibraryIds = await this.libraryService.findAccessibleLibraryIds(user);
@@ -245,6 +256,7 @@ export class DashboardWidgetService {
     'long-wait': (user) => this.getLongWait(user),
     'diversity-score': (user) => this.getDiversityScore(user),
     'reading-rhythm': (user) => this.getReadingRhythm(user),
+    'due-soon': (user) => this.getDueSoon(user),
   };
 
   /**
