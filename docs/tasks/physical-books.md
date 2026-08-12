@@ -80,6 +80,7 @@ a blocker instead of building it.
 | Dashboard widgets are a flat controller registry (12 today) | `server/src/modules/dashboard/dashboard.controller.ts:26-81` | Follow the established pattern for `due-soon`. |
 | Latest migration is `0063_crosspoint_audiobookshelf_sources.sql` | `server/src/db/migrations/` | Your work generates **0064**. Exactly one new migration file. |
 | Library creation requires ≥1 real folder path validated against `LIBRARY_BROWSE_ROOT` | `library.service.ts:105-145`, `assertFolderPathsWithinBrowseRoot:382` | Sam will create the "Physical" library himself with a real empty dir. **Do not attempt to create a library in code.** Accept `libraryId` as input. |
+| `pathsOverlap` is used ONLY in the prescan preview (advisory `overlapLibrary` warning), never enforced in `create`/`update` | `library.service.ts:278-285` | A nested folder is therefore permitted. On the live deploy `LIBRARY_BROWSE_ROOT=/books` and library 1 ("Ebooks") already scans `/books`, so the Physical library will point at **`/books/_physical`** (an empty dir). Expect an advisory overlap warning in the UI — it is not an error. An empty dir yields `candidateCount=0` and imports nothing (`scanner.service.ts:836-841`), so the folder stays permanently empty and harmless. |
 | No barcode/camera library exists in the client | `client/package.json` | You must add one — see the client section. |
 
 ### The `'physical'` source spans 12 files + tests (all confirmed to exist)
