@@ -1,3 +1,5 @@
+import { PgDialect } from 'drizzle-orm/pg-core';
+
 import { ScannerRepository } from './scanner.repository';
 
 type QueryKind = 'select' | 'insert' | 'update' | 'delete';
@@ -147,6 +149,17 @@ describe('ScannerRepository', () => {
     expect(db.update).toHaveBeenCalledTimes(4);
   });
 
+  it('restricts markBooksAsMissing to file-backed books so a scan never marks a physical copy missing', async () => {
+    const { repo, chains } = makeRepo();
+
+    await repo.markBooksAsMissing([11, 12]);
+
+    const where = chains.update[0].mocks.where.mock.calls[0][0];
+    const { sql: text, params } = new PgDialect().sqlToQuery(where);
+    expect(text).toContain('"books"."medium" =');
+    expect(params).toContain('file');
+  });
+
   it('promotes processing books to present and reports whether a row changed', async () => {
     const { repo, queues } = makeRepo();
     queues.update.push([{ id: 10 }]);
@@ -185,6 +198,17 @@ describe('ScannerRepository', () => {
     await expect(repo.findMissingBookByFolderPath('/books/B', 5)).resolves.toBeNull();
     await expect(repo.findMissingBooksByFolderPath('/books/A')).resolves.toEqual([{ id: 11, folderPath: '/books/A', status: 'missing' }]);
     await expect(repo.findMissingBooksByFolderPath('/books/B', 5)).resolves.toEqual([{ id: 12, folderPath: '/books/B', status: 'missing' }]);
+  });
+
+  it('excludes physical books from folder-path reconciliation lookups', async () => {
+    const { repo, chains } = makeRepo();
+
+    await repo.findBooksByFolderPath('/books/A', 5);
+
+    const where = chains.select[0].mocks.where.mock.calls[0][0];
+    const { sql: text, params } = new PgDialect().sqlToQuery(where);
+    expect(text).toContain('"books"."medium" =');
+    expect(params).toContain('file');
   });
 
   it('includes the owning library cover ratio in scanner book-card data', async () => {

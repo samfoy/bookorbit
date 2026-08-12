@@ -934,6 +934,8 @@ export class KoboSyncService {
 
     return and(
       eq(schema.books.status, 'present'),
+      // A physical book has no epub to send to the device.
+      eq(schema.books.medium, 'file'),
       inArray(schema.bookFiles.format, ['epub', 'kepub']),
       libraryAccessFilter,
       membershipFilter,

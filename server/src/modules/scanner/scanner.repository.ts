@@ -105,7 +105,7 @@ export class ScannerRepository {
         primaryFileId: books.primaryFileId,
       })
       .from(books)
-      .where(eq(books.libraryFolderId, libraryFolderId));
+      .where(and(eq(books.libraryFolderId, libraryFolderId), eq(books.medium, 'file')));
   }
 
   async findPrimaryBookFilesByLibrary(libraryId: number) {
@@ -186,7 +186,11 @@ export class ScannerRepository {
 
   async markBooksAsMissing(ids: number[]) {
     if (ids.length === 0) return;
-    await this.db.update(books).set({ status: 'missing', updatedAt: new Date() }).where(inArray(books.id, ids));
+    // Physical books have no file on disk, so a filesystem scan must never mark them missing.
+    await this.db
+      .update(books)
+      .set({ status: 'missing', updatedAt: new Date() })
+      .where(and(inArray(books.id, ids), eq(books.medium, 'file')));
   }
 
   // ── Book Files ─────────────────────────────────────────────────────────────
@@ -251,7 +255,10 @@ export class ScannerRepository {
 
   async findBooksByFolderPath(folderPath: string, libraryId?: number) {
     const folderScope = or(eq(books.folderPath, folderPath), and(gte(books.folderPath, folderPath + '/'), lt(books.folderPath, folderPath + '0')));
-    const whereClause = libraryId == null ? folderScope : and(eq(books.libraryId, libraryId), folderScope);
+    // Physical books carry a 'physical://<uuid>' sentinel folderPath and must stay out of
+    // filesystem path reconciliation, which marks non-matching rows missing.
+    const mediumScope = eq(books.medium, 'file');
+    const whereClause = libraryId == null ? and(folderScope, mediumScope) : and(eq(books.libraryId, libraryId), folderScope, mediumScope);
     return this.db.select().from(books).where(whereClause);
   }
 
@@ -520,6 +527,7 @@ export class ScannerRepository {
         id: books.id,
         libraryId: books.libraryId,
         status: books.status,
+        medium: books.medium,
       })
       .from(books)
       .where(inArray(books.id, bookIds));

@@ -1463,16 +1463,32 @@ describe('read status date filters (startedAt / finishedAt)', () => {
 });
 
 describe('statusRuleToSql (fileAvailability)', () => {
-  it('isMissing produces eq(books.status, "missing")', () => {
+  it('isMissing produces eq(books.status, "missing") restricted to file-backed books', () => {
     const { builder } = makeBuilder();
     const where = builder.buildWhere(wrapRule({ type: 'rule', field: 'fileAvailability', operator: 'isMissing' }) as never, BASE_CTX) as any;
-    expect(getRuleSql(where)).toMatchObject({ type: 'eq', right: 'missing' });
+    const rule = getRuleSql(where);
+    expect(rule).toMatchObject({ type: 'and' });
+    expect((rule as any).clauses).toEqual([
+      expect.objectContaining({ type: 'eq', right: 'file' }),
+      expect.objectContaining({ type: 'eq', right: 'missing' }),
+    ]);
   });
 
-  it('isPresent produces eq(books.status, "present")', () => {
+  it('isPresent produces eq(books.status, "present") restricted to file-backed books', () => {
     const { builder } = makeBuilder();
     const where = builder.buildWhere(wrapRule({ type: 'rule', field: 'fileAvailability', operator: 'isPresent' }) as never, BASE_CTX) as any;
-    expect(getRuleSql(where)).toMatchObject({ type: 'eq', right: 'present' });
+    const rule = getRuleSql(where);
+    expect(rule).toMatchObject({ type: 'and' });
+    expect((rule as any).clauses).toEqual([
+      expect.objectContaining({ type: 'eq', right: 'file' }),
+      expect.objectContaining({ type: 'eq', right: 'present' }),
+    ]);
+  });
+
+  it('compares against the medium column, so a physical book is never reported as missing', () => {
+    const { builder } = makeBuilder();
+    const where = builder.buildWhere(wrapRule({ type: 'rule', field: 'fileAvailability', operator: 'isMissing' }) as never, BASE_CTX) as any;
+    expect(collectColumnNames(getRuleSql(where))).toContain('medium');
   });
 });
 

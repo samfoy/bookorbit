@@ -57,7 +57,8 @@ export class BookDuplicatesRepository {
 
   private scopeWhere(libraryIds: number[], user: RequestUser): SQL {
     if (libraryIds.length === 0) return sql`false`;
-    const clauses: SQL[] = [inArray(books.libraryId, libraryIds), ne(books.status, 'processing')];
+    // Duplicate detection compares files on disk, so physical copies are never candidates.
+    const clauses: SQL[] = [inArray(books.libraryId, libraryIds), ne(books.status, 'processing'), eq(books.medium, 'file')];
     if (!user.isSuperuser) clauses.push(...buildContentFilterClauses(user.contentFilters, this.db));
     return and(...clauses)!;
   }
