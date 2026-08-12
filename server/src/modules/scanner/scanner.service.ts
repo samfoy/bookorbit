@@ -421,7 +421,9 @@ export class ScannerService implements OnApplicationBootstrap {
     if (bookIds.length === 0) return;
 
     const rows = await this.scannerRepo.findBooksByIds(bookIds);
-    const stillMissingIds = rows.filter((book) => book.libraryId === libraryId && book.status === 'missing').map((book) => book.id);
+    const stillMissingIds = rows
+      .filter((book) => book.libraryId === libraryId && book.status === 'missing' && book.medium === 'file')
+      .map((book) => book.id);
     if (stillMissingIds.length === 0) return;
 
     this.scanGateway.emitBookMissing({ libraryId, bookIds: stillMissingIds } satisfies BookMissingEvent);

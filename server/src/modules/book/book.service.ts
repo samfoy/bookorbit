@@ -514,6 +514,15 @@ export class BookService {
     return file;
   }
 
+  /**
+   * File-backed operations (reader, download, metadata-from-file, file writes) have no meaning
+   * for a physical book. Degrade to 400 rather than surfacing a 500 from a null file lookup.
+   */
+  async assertBookHasFiles(bookId: number): Promise<void> {
+    const medium = await this.bookRepo.findBookMedium(bookId);
+    if (medium === 'physical') throw new BadRequestException('Physical books have no files');
+  }
+
   async resolveSelectionToIds(dto: BulkSelectionDto, user: RequestUser): Promise<number[]> {
     if (dto.bookIds && dto.query) {
       throw new BadRequestException('bookIds and query are mutually exclusive');
@@ -3183,6 +3192,7 @@ export class BookService {
 
   async getMetadataFromFile(id: number, user: RequestUser): Promise<Record<string, unknown>> {
     await this.verifyBookAccess(id, user);
+    await this.assertBookHasFiles(id);
     const file = await this.bookRepo.findPrimaryFile(id);
     if (!file) throw new NotFoundException(`Book ${id} has no primary file`);
 

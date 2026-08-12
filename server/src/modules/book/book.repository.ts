@@ -4,6 +4,7 @@ import { SUPPORTED_BOOK_FORMATS } from '../upload/upload-validator.service';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 
 import type {
+  BookMedium,
   ContentFilterRules,
   CustomMetadataFieldTypeMap,
   JumpBucketKind,
@@ -1800,6 +1801,11 @@ export class BookRepository {
       .leftJoin(bookMetadata, eq(bookMetadata.bookId, books.id))
       .where(this.visibleWhere(where));
     return rows.map((r) => r.id);
+  }
+
+  async findBookMedium(bookId: number): Promise<BookMedium | null> {
+    const [row] = await this.db.select({ medium: books.medium }).from(books).where(eq(books.id, bookId)).limit(1);
+    return row?.medium ?? null;
   }
 
   async findPrimaryFile(bookId: number): Promise<{ absolutePath: string; format: string | null } | null> {

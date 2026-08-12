@@ -118,6 +118,7 @@ function makeService(overrides: { bookMetadataLockService?: unknown } = {}) {
     findGenresByBookIds: vi.fn(),
     findNarratorsByBookIds: vi.fn(),
     findPrimaryFile: vi.fn(),
+    findBookMedium: vi.fn().mockResolvedValue('file'),
     findById: vi.fn(),
     findRatingByBookAndUser: vi.fn().mockResolvedValue(null),
     findCollectionsByBookId: vi.fn(),
@@ -2262,6 +2263,25 @@ describe('BookService', () => {
       });
     });
 
+    it('deleteBooks is a clean no-op on disk for a fileless physical book', async () => {
+      const { service, bookRepo } = makeService();
+      const user = makeUser();
+
+      bookRepo.findLibraryIdsByBookIds.mockResolvedValue([{ id: 12, libraryId: 7 }]);
+      bookRepo.findAllFilesByBookIds.mockResolvedValue([]);
+      bookRepo.findDeletionAuditBooksByIds.mockResolvedValue([{ id: 12, title: 'Piranesi' }]);
+      bookRepo.deleteByIds.mockResolvedValue(undefined);
+      mockRm.mockResolvedValue(undefined);
+
+      const result = await service.deleteBooks([12], user);
+
+      expect(bookRepo.deleteByIds).toHaveBeenCalledWith([12]);
+      expect(result).toEqual({ total: 1, books: [{ id: 12, title: 'Piranesi' }], omitted: 0 });
+      // Only the cover directory is removed; there is no book file path to unlink.
+      expect(mockRm).toHaveBeenCalledTimes(1);
+      expect(mockRm).toHaveBeenCalledWith('/tmp/books/covers/12', { recursive: true, force: true });
+    });
+
     it('caps deletion audit book details while preserving the deletion count', async () => {
       const { service, bookRepo } = makeService();
       const user = makeUser();
@@ -4142,6 +4162,15 @@ describe('BookService', () => {
 
       await expect(service.getMetadataFromFile(1, user)).rejects.toThrow(NotFoundException);
       await expect(service.getMetadataFromFile(1, user)).resolves.toEqual({});
+    });
+
+    it('getMetadataFromFile rejects a physical book with 400 rather than a 500 from a null file', async () => {
+      const { service, bookRepo } = makeService();
+      vi.spyOn(service, 'verifyBookAccess').mockResolvedValue(undefined);
+      bookRepo.findBookMedium.mockResolvedValue('physical');
+
+      await expect(service.getMetadataFromFile(7, makeUser())).rejects.toThrow(BadRequestException);
+      expect(bookRepo.findPrimaryFile).not.toHaveBeenCalled();
     });
 
     it('getMetadataFromFile returns an empty object for unsupported but known file formats', async () => {

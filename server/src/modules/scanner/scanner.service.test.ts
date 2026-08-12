@@ -404,9 +404,9 @@ describe('books unavailable notifications', () => {
   it('buffers missing websocket events and emits only books still missing in that library', async () => {
     const repo = makeRepo({
       findBooksByIds: vi.fn().mockResolvedValue([
-        { id: 1, libraryId: 9, status: 'missing' },
-        { id: 2, libraryId: 9, status: 'present' },
-        { id: 3, libraryId: 8, status: 'missing' },
+        { id: 1, libraryId: 9, status: 'missing', medium: 'file' },
+        { id: 2, libraryId: 9, status: 'present', medium: 'file' },
+        { id: 3, libraryId: 8, status: 'missing', medium: 'file' },
       ]),
     });
     const { service } = makeService(repo);
@@ -418,9 +418,36 @@ describe('books unavailable notifications', () => {
     expect(mockGateway.emitBookMissing).toHaveBeenCalledWith({ libraryId: 9, bookIds: [1] });
   });
 
+  it('never emits a missing event for a physical book, which has no file to lose', async () => {
+    const repo = makeRepo({
+      findBooksByIds: vi.fn().mockResolvedValue([
+        { id: 1, libraryId: 9, status: 'missing', medium: 'physical' },
+        { id: 2, libraryId: 9, status: 'missing', medium: 'file' },
+      ]),
+    });
+    const { service } = makeService(repo);
+
+    service.bufferBookMissingEvent(9, [1, 2]);
+    await (service as any).flushBookMissingEvent(9);
+
+    expect(mockGateway.emitBookMissing).toHaveBeenCalledWith({ libraryId: 9, bookIds: [2] });
+  });
+
+  it('emits nothing at all when every buffered book is physical', async () => {
+    const repo = makeRepo({
+      findBooksByIds: vi.fn().mockResolvedValue([{ id: 1, libraryId: 9, status: 'missing', medium: 'physical' }]),
+    });
+    const { service } = makeService(repo);
+
+    service.bufferBookMissingEvent(9, [1]);
+    await (service as any).flushBookMissingEvent(9);
+
+    expect(mockGateway.emitBookMissing).not.toHaveBeenCalled();
+  });
+
   it('cancels pending missing websocket events when unavailable notifications are canceled', async () => {
     const repo = makeRepo({
-      findBooksByIds: vi.fn().mockResolvedValue([{ id: 2, libraryId: 9, status: 'missing' }]),
+      findBooksByIds: vi.fn().mockResolvedValue([{ id: 2, libraryId: 9, status: 'missing', medium: 'file' }]),
     });
     const { service } = makeService(repo);
 

@@ -783,11 +783,13 @@ export class BookQueryBuilder {
   }
 
   private statusRuleToSql(operator: string): SQL {
+    // File availability is only meaningful for file-backed books; nothing is missing or
+    // present on disk about a physical copy. Single caller: the 'fileAvailability' case.
     switch (operator) {
       case 'isMissing':
-        return eq(books.status, 'missing');
+        return and(eq(books.medium, 'file'), eq(books.status, 'missing'))!;
       case 'isPresent':
-        return eq(books.status, 'present');
+        return and(eq(books.medium, 'file'), eq(books.status, 'present'))!;
       default:
         throw new BadRequestException(`Invalid operator '${operator}' for status field`);
     }

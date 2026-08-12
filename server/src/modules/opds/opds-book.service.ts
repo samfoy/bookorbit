@@ -156,7 +156,7 @@ export class OpdsBookService {
           bookCount: sql<number>`count(${books.id})::int`,
         })
         .from(libraries)
-        .leftJoin(books, and(eq(books.libraryId, libraries.id), eq(books.status, 'present')))
+        .leftJoin(books, and(eq(books.libraryId, libraries.id), eq(books.status, 'present'), eq(books.medium, 'file')))
         .groupBy(libraries.id)
         .orderBy(libraries.name);
     }
@@ -168,7 +168,7 @@ export class OpdsBookService {
       })
       .from(libraries)
       .innerJoin(userLibraryAccess, and(eq(userLibraryAccess.libraryId, libraries.id), eq(userLibraryAccess.userId, userId)))
-      .leftJoin(books, and(eq(books.libraryId, libraries.id), eq(books.status, 'present')))
+      .leftJoin(books, and(eq(books.libraryId, libraries.id), eq(books.status, 'present'), eq(books.medium, 'file')))
       .groupBy(libraries.id)
       .orderBy(libraries.name);
   }
@@ -221,7 +221,8 @@ export class OpdsBookService {
       return where ? { where } : null;
     }
 
-    const clauses: SQL[] = [inArray(books.libraryId, accessibleIds), eq(books.status, 'present')];
+    // OPDS serves files; a physical book has none, so it never belongs in an OPDS feed.
+    const clauses: SQL[] = [inArray(books.libraryId, accessibleIds), eq(books.status, 'present'), eq(books.medium, 'file')];
 
     if (filters?.libraryId) clauses.push(eq(books.libraryId, filters.libraryId));
 
@@ -436,7 +437,7 @@ export class OpdsBookService {
   ): Promise<{ entries: OpdsBookEntry[]; total: number }> {
     const accessibleIds = await this.getAccessibleLibraryIds(userId, isSuperuser);
     if (accessibleIds.length === 0) return { entries: [], total: 0 };
-    const clauses: SQL[] = [inArray(books.libraryId, accessibleIds), eq(books.status, 'present')];
+    const clauses: SQL[] = [inArray(books.libraryId, accessibleIds), eq(books.status, 'present'), eq(books.medium, 'file')];
     if (!isSuperuser && contentFilters) {
       clauses.push(...buildContentFilterClauses(contentFilters, this.db));
     }
@@ -449,7 +450,7 @@ export class OpdsBookService {
     const accessibleIds = await this.getAccessibleLibraryIds(userId, isSuperuser);
     if (accessibleIds.length === 0) return [];
 
-    const baseClauses: SQL[] = [inArray(books.libraryId, accessibleIds), eq(books.status, 'present')];
+    const baseClauses: SQL[] = [inArray(books.libraryId, accessibleIds), eq(books.status, 'present'), eq(books.medium, 'file')];
     if (!isSuperuser && contentFilters) {
       baseClauses.push(...buildContentFilterClauses(contentFilters, this.db));
     }
@@ -479,7 +480,7 @@ export class OpdsBookService {
       })
       .from(authors)
       .innerJoin(bookAuthors, eq(bookAuthors.authorId, authors.id))
-      .innerJoin(books, and(eq(books.id, bookAuthors.bookId), eq(books.status, 'present'), ...filterClauses))
+      .innerJoin(books, and(eq(books.id, bookAuthors.bookId), eq(books.status, 'present'), eq(books.medium, 'file'), ...filterClauses))
       .where(inArray(books.libraryId, accessibleIds))
       .groupBy(authors.name, authors.sortName)
       .orderBy(sql`${authors.sortName} ASC NULLS LAST`);
@@ -503,7 +504,7 @@ export class OpdsBookService {
       })
       .from(bookSeries)
       .innerJoin(bookSeriesMemberships, eq(bookSeriesMemberships.seriesId, bookSeries.id))
-      .innerJoin(books, and(eq(books.id, bookSeriesMemberships.bookId), eq(books.status, 'present'), ...filterClauses))
+      .innerJoin(books, and(eq(books.id, bookSeriesMemberships.bookId), eq(books.status, 'present'), eq(books.medium, 'file'), ...filterClauses))
       .where(inArray(books.libraryId, accessibleIds))
       .groupBy(bookSeries.id, bookSeries.name)
       .orderBy(sql`${bookSeries.name} ASC`);
@@ -532,7 +533,7 @@ export class OpdsBookService {
       })
       .from(authors)
       .innerJoin(bookAuthors, eq(bookAuthors.authorId, authors.id))
-      .innerJoin(books, and(eq(books.id, bookAuthors.bookId), eq(books.status, 'present'), ...filterClauses))
+      .innerJoin(books, and(eq(books.id, bookAuthors.bookId), eq(books.status, 'present'), eq(books.medium, 'file'), ...filterClauses))
       .where(and(...where))
       .groupBy(authors.name, authors.sortName)
       .orderBy(sql`${authors.sortName} ASC NULLS LAST`)
@@ -567,7 +568,7 @@ export class OpdsBookService {
       })
       .from(bookSeries)
       .innerJoin(bookSeriesMemberships, eq(bookSeriesMemberships.seriesId, bookSeries.id))
-      .innerJoin(books, and(eq(books.id, bookSeriesMemberships.bookId), eq(books.status, 'present'), ...filterClauses))
+      .innerJoin(books, and(eq(books.id, bookSeriesMemberships.bookId), eq(books.status, 'present'), eq(books.medium, 'file'), ...filterClauses))
       .where(and(...where))
       .groupBy(bookSeries.id, bookSeries.name)
       .orderBy(sql`${bookSeries.name} ASC`)
@@ -696,7 +697,7 @@ export class OpdsBookService {
       userId,
       contentFilters,
     });
-    const statusClause = eq(books.status, 'present');
+    const statusClause = and(eq(books.status, 'present'), eq(books.medium, 'file'))!;
     const searchClause = q?.trim() ? this.buildCatalogSearchClause(q) : undefined;
     return and(...([where, statusClause, searchClause].filter(Boolean) as SQL[]))!;
   }
