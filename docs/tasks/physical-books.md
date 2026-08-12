@@ -85,6 +85,23 @@ a blocker instead of building it.
 
 ### The `'physical'` source spans 12 files + tests (all confirmed to exist)
 
+> ⚠️ **CORRECTION (authoritative — overrides any conflicting text below).** There are **THREE
+> DISTINCT unions**, not one. Do not conflate them:
+> 1. `READING_SESSION_SOURCES` (`packages/types/src/reading-session.ts`) — drives
+>    `reading_sessions_source_chk`.
+> 2. `READING_ATTEMPT_ORIGINS` (`packages/types/src/book.ts:40`) — drives
+>    `reading_attempts_origin_chk`. **This is a separate list** and its members differ
+>    (`manual, bookorbit, kobo, koreader, hardcover, migration`).
+> 3. `READING_SESSION_SOURCE_BUCKETS` (`packages/types/src/reading-session-source-bucket.ts`) —
+>    the display/grouping list, a third distinct set (`bookorbit, koreader, kobo, ...`).
+>
+> Also: **`fileAvailability` is NOT a standalone case.** It delegates to the shared
+> `statusRuleToSql` (`book-query-builder.service.ts:785`, called from line 194). That helper has
+> exactly one caller, so guarding it there is safe — but verify callers before editing.
+>
+> Also add `BOOK_MEDIUMS`/`BookMedium` to `packages/types/src/book.ts` and type the column
+> `$type<BookMedium>()`.
+
 Adding a reading-session source value has been done twice before on this fork (`crosspoint`,
 `audiobookshelf`). **Every one of these must be updated or TypeScript exhaustiveness fails:**
 
