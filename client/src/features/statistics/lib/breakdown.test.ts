@@ -16,7 +16,7 @@ describe('breakdown', () => {
   it('returns every source bucket for the source dimension', () => {
     const series = getBreakdownSeries('source', 'theme:violet', [])
     expect(series.map((s) => s.key)).toEqual(['bookorbit', 'koreader', 'kobo', 'crosspoint', 'audiobookshelf', 'physical'])
-    expect(series.map((s) => s.label)).toEqual(['BookOrbit', 'KOReader', 'Kobo', 'Crosspoint', 'Audiobookshelf'])
+    expect(series.map((s) => s.label)).toEqual(['BookOrbit', 'KOReader', 'Kobo', 'Crosspoint', 'Audiobookshelf', 'Physical'])
   })
 
   it('returns one series per format key for the format dimension', () => {
