@@ -185,6 +185,48 @@ export class ReadingSessionService {
     }
   }
 
+  /**
+   * Records a page-log session for a physical copy. Routed through the same repository
+   * transaction as manual sessions because that transaction also upserts
+   * user_reading_daily_stats; a hand-rolled insert would desync the stats and break the streak.
+   *
+   * Access is already verified by the physical-book service, which owns the copy row.
+   */
+  async createPhysicalSession(params: {
+    userId: number;
+    bookId: number;
+    libraryId: number;
+    startedAt: Date;
+    endedAt: Date;
+    durationSeconds: number;
+    endProgress: number | null;
+    timeZone: string;
+  }): Promise<{ id: number }> {
+    const { userId, bookId, libraryId, startedAt, endedAt, durationSeconds, endProgress, timeZone } = params;
+
+    let progressDelta: number | null = null;
+    if (endProgress !== null) {
+      const previous = (await this.repo.findLatestEndProgressBefore(userId, bookId, startedAt)) ?? 0;
+      progressDelta = Math.round(Math.max(-100, Math.min(100, endProgress - previous)) * 100) / 100;
+    }
+
+    return this.repo.insertManualSession({
+      userId,
+      bookId,
+      libraryId,
+      // A physical copy has no file, so there is nothing to attribute the session to.
+      bookFileId: null,
+      sessionId: `physical:${randomUUID()}`,
+      startedAt,
+      endedAt,
+      durationSeconds,
+      progressDelta,
+      endProgress,
+      timeZone,
+      source: 'physical',
+    });
+  }
+
   async listByBook(bookId: number, user: RequestUser, query: ListBookReadingSessionsDto): Promise<BookReadingSessionListResponse> {
     const event = 'book.reading_sessions.list';
     const startedAtMs = Date.now();

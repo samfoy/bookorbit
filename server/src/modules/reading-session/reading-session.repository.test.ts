@@ -229,6 +229,33 @@ describe('ReadingSessionRepository - insertManualSession', () => {
     expect(tx.execute).toHaveBeenCalledOnce();
     expect(dailyConflictUpdate).toHaveBeenCalledOnce();
   });
+
+  it('records an explicit source and still upserts daily stats in the same transaction', async () => {
+    const { repo, sessionValues, dailyValues, dailyConflictUpdate } = makeManualHarness();
+
+    await repo.insertManualSession({
+      userId: 5,
+      bookId: 10,
+      libraryId: 3,
+      bookFileId: null,
+      sessionId: 'physical:abc',
+      startedAt: new Date('2026-04-15T10:00:00.000Z'),
+      endedAt: new Date('2026-04-15T10:30:00.000Z'),
+      durationSeconds: 1800,
+      progressDelta: 12.5,
+      endProgress: 60,
+      timeZone: 'UTC',
+      source: 'physical',
+    });
+
+    expect(sessionValues).toHaveBeenCalledWith(expect.objectContaining({ sessionId: 'physical:abc', source: 'physical' }));
+    // The streak depends on this upsert, so a physical page log must reach it exactly like a
+    // manual session does.
+    expect(dailyValues).toHaveBeenCalledWith([
+      expect.objectContaining({ userId: 5, libraryId: 3, day: '2026-04-15', readingSeconds: 1800, progressDelta: 12.5, sessionsCount: 1 }),
+    ]);
+    expect(dailyConflictUpdate).toHaveBeenCalledOnce();
+  });
 });
 
 describe('ReadingSessionRepository - findLatestEndProgressBefore', () => {

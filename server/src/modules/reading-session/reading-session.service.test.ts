@@ -453,6 +453,125 @@ describe('ReadingSessionService - createManualSession', () => {
 
     expect(achievementEmit).not.toHaveBeenCalled();
   });
+
+  it('still tags a manual session as manual now that source is a parameter', async () => {
+    const svc = makeManualService();
+    await svc.createManualSession(10, { startedAt: '2026-04-15T10:00:00.000Z', durationMinutes: 30 }, makeUser({ id: 5 }));
+
+    const params = mockRepoExtended.insertManualSession.mock.calls[0]![0] as { source?: string };
+    expect(params.source).toBeUndefined();
+  });
+});
+
+describe('ReadingSessionService - createPhysicalSession', () => {
+  function makePhysicalService() {
+    return new ReadingSessionService(
+      mockRepoExtended as unknown as ReadingSessionRepository,
+      mockBookServiceExtended as unknown as BookService,
+      { emit: vi.fn() } as never,
+    );
+  }
+
+  function physicalParams(overrides?: Record<string, unknown>) {
+    return {
+      userId: 5,
+      bookId: 10,
+      libraryId: 3,
+      startedAt: new Date('2026-04-15T10:00:00.000Z'),
+      endedAt: new Date('2026-04-15T10:30:00.000Z'),
+      durationSeconds: 1800,
+      endProgress: 25,
+      timeZone: 'America/Los_Angeles',
+      ...overrides,
+    };
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockRepoExtended.findLatestEndProgressBefore.mockResolvedValue(null);
+    mockRepoExtended.insertManualSession.mockResolvedValue({ id: 777 });
+    vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+    vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+  });
+
+  // Physical page logs must bucket separately from manually entered ebook sessions so reading
+  // stats can tell "I typed in a session" apart from "I turned paper pages".
+  it("tags the session source as 'physical'", async () => {
+    const svc = makePhysicalService();
+    await svc.createPhysicalSession(physicalParams());
+
+    expect(mockRepoExtended.insertManualSession).toHaveBeenCalledWith(expect.objectContaining({ source: 'physical' }));
+  });
+
+  // insertManualSession also upserts user_reading_daily_stats in the same transaction. Writing the
+  // session row directly would desync those stats and silently break the reading streak.
+  it('routes through insertManualSession so daily stats update in the same transaction', async () => {
+    const svc = makePhysicalService();
+    const result = await svc.createPhysicalSession(physicalParams());
+
+    expect(result).toEqual({ id: 777 });
+    expect(mockRepoExtended.insertManualSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 5,
+        bookId: 10,
+        libraryId: 3,
+        startedAt: new Date('2026-04-15T10:00:00.000Z'),
+        endedAt: new Date('2026-04-15T10:30:00.000Z'),
+        durationSeconds: 1800,
+        endProgress: 25,
+        timeZone: 'America/Los_Angeles',
+      }),
+    );
+  });
+
+  it('attributes the session to no file because a physical copy has none', async () => {
+    const svc = makePhysicalService();
+    await svc.createPhysicalSession(physicalParams());
+
+    expect(mockRepoExtended.insertManualSession).toHaveBeenCalledWith(expect.objectContaining({ bookFileId: null }));
+  });
+
+  it('namespaces the generated session id so it cannot collide with a reader session', async () => {
+    const svc = makePhysicalService();
+    await svc.createPhysicalSession(physicalParams());
+
+    const { sessionId } = mockRepoExtended.insertManualSession.mock.calls[0]![0] as { sessionId: string };
+    expect(sessionId).toMatch(/^physical:[0-9a-f-]{36}$/);
+  });
+
+  it('derives progressDelta from the last recorded progress before this session', async () => {
+    mockRepoExtended.findLatestEndProgressBefore.mockResolvedValue(18.5);
+
+    const svc = makePhysicalService();
+    await svc.createPhysicalSession(physicalParams({ endProgress: 25 }));
+
+    expect(mockRepoExtended.findLatestEndProgressBefore).toHaveBeenCalledWith(5, 10, new Date('2026-04-15T10:00:00.000Z'));
+    expect(mockRepoExtended.insertManualSession).toHaveBeenCalledWith(expect.objectContaining({ progressDelta: 6.5 }));
+  });
+
+  it('treats a first session as progress from zero', async () => {
+    const svc = makePhysicalService();
+    await svc.createPhysicalSession(physicalParams({ endProgress: 25 }));
+
+    expect(mockRepoExtended.insertManualSession).toHaveBeenCalledWith(expect.objectContaining({ progressDelta: 25 }));
+  });
+
+  it('leaves progressDelta null when there is no page count to derive a percentage from', async () => {
+    const svc = makePhysicalService();
+    await svc.createPhysicalSession(physicalParams({ endProgress: null }));
+
+    expect(mockRepoExtended.findLatestEndProgressBefore).not.toHaveBeenCalled();
+    expect(mockRepoExtended.insertManualSession).toHaveBeenCalledWith(expect.objectContaining({ progressDelta: null, endProgress: null }));
+  });
+
+  it('allows a negative delta when a mistyped page is corrected downwards', async () => {
+    mockRepoExtended.findLatestEndProgressBefore.mockResolvedValue(60);
+
+    const svc = makePhysicalService();
+    await svc.createPhysicalSession(physicalParams({ endProgress: 40 }));
+
+    expect(mockRepoExtended.insertManualSession).toHaveBeenCalledWith(expect.objectContaining({ progressDelta: -20 }));
+  });
 });
 
 describe('ReadingSessionService - deleteSessionByBook', () => {

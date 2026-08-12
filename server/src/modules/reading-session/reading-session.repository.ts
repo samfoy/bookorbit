@@ -46,6 +46,8 @@ export interface InsertManualSessionParams {
   progressDelta: number | null;
   endProgress: number | null;
   timeZone: string;
+  /** Defaults to 'manual'. Physical page logs pass 'physical' so they bucket separately. */
+  source?: ReadingSessionSource;
 }
 
 @Injectable()
@@ -111,7 +113,20 @@ export class ReadingSessionRepository {
   }
 
   async insertManualSession(params: InsertManualSessionParams): Promise<{ id: number }> {
-    const { userId, bookId, libraryId, bookFileId, sessionId, startedAt, endedAt, durationSeconds, progressDelta, endProgress, timeZone } = params;
+    const {
+      userId,
+      bookId,
+      libraryId,
+      bookFileId,
+      sessionId,
+      startedAt,
+      endedAt,
+      durationSeconds,
+      progressDelta,
+      endProgress,
+      timeZone,
+      source = 'manual',
+    } = params;
 
     return this.db.transaction(async (tx) => {
       const [inserted] = await tx
@@ -122,7 +137,7 @@ export class ReadingSessionRepository {
           bookFileId,
           attemptId: sql`(select id from reading_attempts where user_id = ${userId} and book_id = ${bookId} and outcome is null and deleted_at is null limit 1)`,
           sessionId,
-          source: 'manual',
+          source,
           startedAt,
           endedAt,
           durationSeconds,
