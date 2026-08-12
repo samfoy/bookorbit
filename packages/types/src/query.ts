@@ -21,6 +21,9 @@ import type { CommunityRatingProviderKey } from "./metadata-fetch";
  * - `publishedDate` - uses full dates when available and falls back to published year
  * - `lockStatus` - derived from `book_metadata.locked_fields` (non-empty array = locked)
  * - `seriesStatus` - computed per-user: "up next in series" (next unstarted book whose earlier series entries are all finished)
+ * - `medium` - from `books.medium` ('file' | 'physical')
+ * - `acquisition` - from `book_physical_copies.acquisition` (per-user)
+ * - `dueOn` - from `book_physical_copies.due_on` (per-user), unreturned loans only
  *
  * User-defined custom metadata fields are filterable too, as `CustomRuleField`.
  */
@@ -52,7 +55,10 @@ export type StaticRuleField =
   | "metadataScore"
   | "cover"
   | "lockStatus"
-  | "seriesStatus";
+  | "seriesStatus"
+  | "medium"
+  | "acquisition"
+  | "dueOn";
 
 /**
  * A user-defined custom metadata field, referenced by its numeric id.
@@ -127,6 +133,9 @@ export const FIELD_OPERATORS: Record<StaticRuleField, RuleOperator[]> = {
   cover: ["isMissing", "isPresent"],
   lockStatus: ["isLocked", "isUnlocked"],
   seriesStatus: ["isUpNext"],
+  medium: ["includesAny", "excludesAll"],
+  acquisition: ["includesAny", "excludesAll"],
+  dueOn: ["before", "after", "between", "withinLast", "isEmpty", "isNotEmpty"],
 };
 
 export const RULE_FIELDS = Object.keys(FIELD_OPERATORS) as StaticRuleField[];

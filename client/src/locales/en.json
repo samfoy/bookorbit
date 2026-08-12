@@ -3319,7 +3319,10 @@
         "metadataScore": "Metadata Score",
         "cover": "Cover",
         "lockStatus": "Lock Status",
-        "seriesStatus": "Series Status"
+        "seriesStatus": "Series Status",
+        "medium": "Medium",
+        "acquisition": "Acquisition",
+        "dueOn": "Due Date"
       },
       "operators": {
         "contains": "contains",
@@ -3360,6 +3363,17 @@
       "noLibrariesAvailable": "No libraries available",
       "selectLibrary": "Select library...",
       "selectStatus": "Select status...",
+      "selectMedium": "Select medium...",
+      "selectAcquisition": "Select acquisition...",
+      "mediumValues": {
+        "file": "Ebook or audiobook",
+        "physical": "Physical"
+      },
+      "acquisitionValues": {
+        "owned": "Owned",
+        "borrowed_library": "Borrowed from a library",
+        "borrowed_personal": "Borrowed from a person"
+      },
       "withinLastPlaceholder": "e.g. 7",
       "unit": {
         "days": "days",
