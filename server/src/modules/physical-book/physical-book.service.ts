@@ -1,18 +1,22 @@
-import { BadRequestException, ConflictException, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { catchError, lastValueFrom, of, take, takeUntil, timer, toArray } from 'rxjs';
-import type { MetadataCandidate } from '@bookorbit/types';
+import type { MetadataCandidate, PhysicalCopySummary } from '@bookorbit/types';
 
 import type { RequestUser } from '../../common/types/request-user';
 import { mapWithConcurrency } from '../../common/utils/batch.utils';
 import { parseIsbn } from '../../common/utils/isbn.utils';
 import { sanitizeLogValue } from '../../common/utils/log-sanitize.utils';
+import { addDateKeyDays, getDayRangeForDateKeys } from '../../common/utils/reading-daily-stats.utils';
+import { resolveTimeZone, toDateKeyInTimeZone } from '../../common/utils/timezone.utils';
 import type { BookPhysicalCopy } from '../../db/schema';
 import { LibraryService } from '../library/library.service';
 import { MetadataFetchService } from '../metadata-fetch/metadata-fetch.service';
 import { MetadataService } from '../metadata/metadata.service';
-import { BulkImportPhysicalBooksDto, CreatePhysicalBookDto } from './dto';
+import { ReadingSessionService } from '../reading-session/reading-session.service';
+import { BulkImportPhysicalBooksDto, CreatePhysicalBookDto, LogProgressDto, UpdatePhysicalCopyDto } from './dto';
 import { PhysicalBookRepository } from './physical-book.repository';
+import { buildCopySummary } from './utils/copy-summary.utils';
 import { candidateToMetadataFields, pickBestCandidate } from './utils/candidate-merge.utils';
 
 // An ISBN lookup fans out across every provider; without a ceiling one slow provider would hold
@@ -21,6 +25,7 @@ const LOOKUP_TIMEOUT_MS = 12_000;
 const LOOKUP_MAX_CANDIDATES = 12;
 // Bulk imports run provider lookups, so concurrency stays low to avoid tripping provider throttles.
 const BULK_CONCURRENCY = 3;
+const PACE_WINDOW_DAYS = 7;
 
 export interface CreatePhysicalBookResult {
   bookId: number;
@@ -41,6 +46,7 @@ export class PhysicalBookService {
     private readonly metadataFetchService: MetadataFetchService,
     private readonly metadataService: MetadataService,
     private readonly libraryService: LibraryService,
+    private readonly readingSessionService: ReadingSessionService,
   ) {}
 
   async lookupIsbn(rawIsbn: string, user: RequestUser): Promise<MetadataCandidate | null> {
@@ -134,6 +140,178 @@ export class PhysicalBookService {
       `[${event}] [end] userId=${user.id} libraryId=${dto.libraryId} durationMs=${Date.now() - startedAtMs} total=${dto.isbns.length} created=${created.length} failed=${failed.length} - bulk import completed`,
     );
     return { created, failed };
+  }
+
+  async getCopy(bookId: number, user: RequestUser): Promise<PhysicalCopySummary> {
+    const context = await this.requireCopyContext(bookId, user);
+    const paceLast7Days = await this.computePaceLast7Days(user, bookId, context);
+    return buildCopySummary(context.copy, context.metadataPageCount, paceLast7Days, this.resolveUserTimeZone(user));
+  }
+
+  /**
+   * The primary daily interaction: the reader closes the book and tells us the page they reached.
+   */
+  async logProgress(bookId: number, dto: LogProgressDto, user: RequestUser): Promise<PhysicalCopySummary> {
+    const event = 'physical_book.log_progress';
+    const startedAtMs = Date.now();
+    this.logger.log(
+      `[${event}] [start] bookId=${bookId} userId=${user.id} currentPage=${dto.currentPage} minutes=${dto.minutes ?? 'none'} - log progress started`,
+    );
+
+    try {
+      const context = await this.requireCopyContext(bookId, user);
+      const timeZone = this.resolveUserTimeZone(user);
+      const effectivePageCount = context.copy.pageCount ?? context.metadataPageCount ?? null;
+
+      // A page beyond a known page count is a typo, not a reading milestone.
+      if (effectivePageCount !== null && dto.currentPage > effectivePageCount) {
+        throw new BadRequestException(`currentPage cannot exceed the page count of ${effectivePageCount}`);
+      }
+      // Correcting a mistyped page is allowed; claiming reading time for going backwards is not.
+      if (dto.currentPage < context.copy.currentPage && dto.minutes !== undefined) {
+        throw new BadRequestException('currentPage cannot decrease when reading time is reported');
+      }
+
+      const { startedAt, endedAt, durationSeconds } = this.resolveSessionWindow(dto);
+      // Never invent a denominator: with no page count anywhere, the page is stored but there is
+      // no percentage to report, so endProgress stays null.
+      const endProgress = effectivePageCount ? Math.round((dto.currentPage / effectivePageCount) * 10000) / 100 : null;
+
+      let sessionId: number | null = null;
+      if (durationSeconds > 0 || dto.currentPage !== context.copy.currentPage) {
+        const session = await this.readingSessionService.createPhysicalSession({
+          userId: user.id,
+          bookId,
+          libraryId: context.libraryId,
+          startedAt,
+          endedAt,
+          durationSeconds,
+          endProgress,
+          timeZone,
+        });
+        sessionId = session.id;
+      }
+
+      const updated = await this.repo.updateCopy(user.id, bookId, { currentPage: dto.currentPage });
+      if (!updated) throw new NotFoundException('Physical copy not found');
+
+      const finished = effectivePageCount !== null && dto.currentPage >= effectivePageCount;
+      if (finished) await this.repo.markRead(user.id, bookId, endedAt, toDateKeyInTimeZone(endedAt, timeZone));
+      else if (dto.currentPage > 0) await this.repo.markReading(user.id, bookId, startedAt);
+
+      const paceLast7Days = await this.computePaceLast7Days(user, bookId, { ...context, copy: updated });
+
+      this.logger.log(
+        `[${event}] [end] bookId=${bookId} userId=${user.id} durationMs=${Date.now() - startedAtMs} currentPage=${dto.currentPage} effectivePageCount=${effectivePageCount ?? 'unknown'} sessionId=${sessionId ?? 'none'} finished=${finished} - log progress completed`,
+      );
+
+      return buildCopySummary(updated, context.metadataPageCount, paceLast7Days, timeZone);
+    } catch (error) {
+      const errorClass = error instanceof Error ? error.constructor.name : 'UnknownError';
+      this.logger.warn(
+        `[${event}] [fail] bookId=${bookId} userId=${user.id} durationMs=${Date.now() - startedAtMs} errorClass=${errorClass} error="${sanitizeLogValue(error instanceof Error ? error.message : 'unknown error')}" - log progress failed`,
+      );
+      throw error;
+    }
+  }
+
+  async updateCopy(bookId: number, dto: UpdatePhysicalCopyDto, user: RequestUser): Promise<PhysicalCopySummary> {
+    const context = await this.requireCopyContext(bookId, user);
+
+    const acquisition = dto.acquisition ?? context.copy.acquisition;
+    const lender = dto.lender ?? context.copy.lender;
+    // Re-checked here because a PATCH can flip acquisition without resending lender, which the
+    // per-request DTO cannot see.
+    if (acquisition !== 'owned' && !lender) {
+      throw new BadRequestException('lender is required when acquisition is not owned');
+    }
+
+    const updated = await this.repo.updateCopy(user.id, bookId, { ...dto, acquisition, lender });
+    if (!updated) throw new NotFoundException('Physical copy not found');
+
+    const paceLast7Days = await this.computePaceLast7Days(user, bookId, { ...context, copy: updated });
+    return buildCopySummary(updated, context.metadataPageCount, paceLast7Days, this.resolveUserTimeZone(user));
+  }
+
+  /** Closes out a loan. The book and its reading history stay; only the borrowing ends. */
+  async returnCopy(bookId: number, user: RequestUser): Promise<PhysicalCopySummary> {
+    const event = 'physical_book.return';
+    const startedAtMs = Date.now();
+    const context = await this.requireCopyContext(bookId, user);
+    if (context.copy.acquisition === 'owned') {
+      throw new BadRequestException('An owned copy cannot be returned');
+    }
+
+    const timeZone = this.resolveUserTimeZone(user);
+    const updated = await this.repo.updateCopy(user.id, bookId, { returnedOn: toDateKeyInTimeZone(new Date(), timeZone) });
+    if (!updated) throw new NotFoundException('Physical copy not found');
+
+    this.logger.log(
+      `[${event}] [end] bookId=${bookId} userId=${user.id} durationMs=${Date.now() - startedAtMs} returnedOn=${updated.returnedOn ?? 'none'} - return physical copy completed`,
+    );
+
+    const paceLast7Days = await this.computePaceLast7Days(user, bookId, { ...context, copy: updated });
+    return buildCopySummary(updated, context.metadataPageCount, paceLast7Days, timeZone);
+  }
+
+  async deleteCopy(bookId: number, user: RequestUser): Promise<void> {
+    const event = 'physical_book.delete';
+    const startedAtMs = Date.now();
+    await this.requireCopyContext(bookId, user);
+    const deleted = await this.repo.deleteCopy(user.id, bookId);
+    if (!deleted) throw new NotFoundException('Physical copy not found');
+    this.logger.log(`[${event}] [end] bookId=${bookId} userId=${user.id} durationMs=${Date.now() - startedAtMs} - delete physical copy completed`);
+  }
+
+  private async requireCopyContext(bookId: number, user: RequestUser) {
+    const context = await this.repo.findCopyContext(user.id, bookId);
+    // The copy row is keyed by (userId, bookId), so a miss means either no such copy or it
+    // belongs to somebody else. Both are reported the same way to avoid leaking existence.
+    if (!context) throw new NotFoundException('Physical copy not found');
+    return context;
+  }
+
+  private resolveSessionWindow(dto: LogProgressDto): { startedAt: Date; endedAt: Date; durationSeconds: number } {
+    const endedAt = new Date();
+    const durationSeconds = (dto.minutes ?? 0) * 60;
+
+    if (dto.startedAt) {
+      const startedAt = new Date(dto.startedAt);
+      if (Number.isNaN(startedAt.getTime())) throw new BadRequestException('Invalid startedAt timestamp');
+      if (startedAt.getTime() > endedAt.getTime()) throw new BadRequestException('startedAt cannot be in the future');
+      return dto.minutes !== undefined
+        ? { startedAt, endedAt: new Date(startedAt.getTime() + durationSeconds * 1000), durationSeconds }
+        : { startedAt, endedAt, durationSeconds: 0 };
+    }
+
+    return { startedAt: new Date(endedAt.getTime() - durationSeconds * 1000), endedAt, durationSeconds };
+  }
+
+  /**
+   * Pages per day over the trailing 7 days in the user's own timezone, so a session logged at
+   * 11pm Pacific counts toward that Pacific day rather than the following UTC one.
+   */
+  private async computePaceLast7Days(
+    user: RequestUser,
+    bookId: number,
+    context: { copy: BookPhysicalCopy; metadataPageCount: number | null },
+  ): Promise<number> {
+    const effectivePageCount = context.copy.pageCount ?? context.metadataPageCount ?? null;
+    if (!effectivePageCount) return 0;
+
+    const timeZone = this.resolveUserTimeZone(user);
+    const today = toDateKeyInTimeZone(new Date(), timeZone);
+    const days = Array.from({ length: PACE_WINDOW_DAYS }, (_, index) => addDateKeyDays(today, index - (PACE_WINDOW_DAYS - 1)));
+    const range = getDayRangeForDateKeys(days, timeZone);
+    if (!range) return 0;
+
+    const progressDelta = await this.repo.sumProgressDeltaBetween(user.id, bookId, range.start, range.end);
+    const pages = (progressDelta / 100) * effectivePageCount;
+    return Math.max(0, Math.round((pages / PACE_WINDOW_DAYS) * 100) / 100);
+  }
+
+  private resolveUserTimeZone(user: RequestUser): string {
+    return resolveTimeZone((user.settings as { timezone?: unknown } | undefined)?.timezone, 'UTC');
   }
 
   private async persist(

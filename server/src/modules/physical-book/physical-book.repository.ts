@@ -1,10 +1,10 @@
 import { Inject, Injectable, InternalServerErrorException } from '@nestjs/common';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, gte, isNull, lt, notInArray, sql } from 'drizzle-orm';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 
 import { DB } from '../../db';
 import * as schema from '../../db/schema';
-import { bookMetadata, bookPhysicalCopies, books, libraryFolders, userBookStatus } from '../../db/schema';
+import { bookMetadata, bookPhysicalCopies, books, libraryFolders, readingAttempts, readingSessions, userBookStatus } from '../../db/schema';
 import type { BookPhysicalCopy } from '../../db/schema';
 
 type Db = NodePgDatabase<typeof schema>;
@@ -70,6 +70,104 @@ export class PhysicalBookRepository {
       .where(and(eq(bookPhysicalCopies.userId, userId), eq(bookPhysicalCopies.bookId, bookId)))
       .limit(1);
     return row ?? null;
+  }
+
+  /**
+   * Returns the copy plus the context a page log needs: the library for the session row, the
+   * metadata page count that backs effectivePageCount, and the book title.
+   */
+  async findCopyContext(
+    userId: number,
+    bookId: number,
+  ): Promise<{ copy: BookPhysicalCopy; libraryId: number; metadataPageCount: number | null; title: string | null } | null> {
+    const [row] = await this.db
+      .select({
+        copy: bookPhysicalCopies,
+        libraryId: books.libraryId,
+        metadataPageCount: bookMetadata.pageCount,
+        title: bookMetadata.title,
+      })
+      .from(bookPhysicalCopies)
+      .innerJoin(books, eq(books.id, bookPhysicalCopies.bookId))
+      .leftJoin(bookMetadata, eq(bookMetadata.bookId, bookPhysicalCopies.bookId))
+      .where(and(eq(bookPhysicalCopies.userId, userId), eq(bookPhysicalCopies.bookId, bookId)))
+      .limit(1);
+    return row ?? null;
+  }
+
+  async updateCopy(userId: number, bookId: number, values: Partial<schema.NewBookPhysicalCopy>): Promise<BookPhysicalCopy | null> {
+    const [row] = await this.db
+      .update(bookPhysicalCopies)
+      .set(values)
+      .where(and(eq(bookPhysicalCopies.userId, userId), eq(bookPhysicalCopies.bookId, bookId)))
+      .returning();
+    return row ?? null;
+  }
+
+  async deleteCopy(userId: number, bookId: number): Promise<boolean> {
+    const deleted = await this.db
+      .delete(bookPhysicalCopies)
+      .where(and(eq(bookPhysicalCopies.userId, userId), eq(bookPhysicalCopies.bookId, bookId)))
+      .returning({ bookId: bookPhysicalCopies.bookId });
+    return deleted.length > 0;
+  }
+
+  /**
+   * Pages read per day over a window, derived from physical sessions' progressDelta against the
+   * effective page count. Bounds come from getDayRangeForDateKeys so the window follows the
+   * user's timezone rather than the server's UTC clock.
+   */
+  async sumProgressDeltaBetween(userId: number, bookId: number, start: Date, end: Date): Promise<number> {
+    const [row] = await this.db
+      .select({ total: sql<string | null>`coalesce(sum(${readingSessions.progressDelta}), 0)` })
+      .from(readingSessions)
+      .where(
+        and(
+          eq(readingSessions.userId, userId),
+          eq(readingSessions.bookId, bookId),
+          gte(readingSessions.startedAt, start),
+          lt(readingSessions.startedAt, end),
+        ),
+      );
+    return Number(row?.total ?? 0);
+  }
+
+  async markRead(userId: number, bookId: number, finishedAt: Date, endedOn: string): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      await tx
+        .insert(userBookStatus)
+        .values({ userId, bookId, status: 'read', source: 'auto', finishedAt })
+        .onConflictDoUpdate({
+          target: [userBookStatus.userId, userBookStatus.bookId],
+          set: { status: 'read', finishedAt },
+        });
+
+      // Closes the open attempt so the next reread starts a fresh one. The partial unique index
+      // reading_attempts_one_active_uidx guarantees there is at most one to close.
+      await tx
+        .update(readingAttempts)
+        .set({ outcome: 'completed', endedOn })
+        .where(
+          and(
+            eq(readingAttempts.userId, userId),
+            eq(readingAttempts.bookId, bookId),
+            isNull(readingAttempts.outcome),
+            isNull(readingAttempts.deletedAt),
+          ),
+        );
+    });
+  }
+
+  async markReading(userId: number, bookId: number, startedAt: Date): Promise<void> {
+    await this.db
+      .insert(userBookStatus)
+      .values({ userId, bookId, status: 'reading', source: 'auto', startedAt })
+      .onConflictDoUpdate({
+        target: [userBookStatus.userId, userBookStatus.bookId],
+        // Never downgrade a manually-set status, and never pull a finished book back to reading.
+        set: { status: 'reading' },
+        setWhere: and(eq(userBookStatus.source, 'auto'), notInArray(userBookStatus.status, ['read', 'reading'])),
+      });
   }
 
   /**
