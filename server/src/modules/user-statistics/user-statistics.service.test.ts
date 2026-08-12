@@ -95,7 +95,7 @@ describe('UserStatisticsService', () => {
       day: '2026-04-12',
       totalSeconds: 2400,
       sessionsCount: 2,
-      bySource: { bookorbit: 600, koreader: 0, kobo: 1800, crosspoint: 0, audiobookshelf: 0 },
+      bySource: { bookorbit: 600, koreader: 0, kobo: 1800, crosspoint: 0, audiobookshelf: 0, physical: 0 },
       sessions: [
         {
           sessionId: 91,
@@ -170,21 +170,21 @@ describe('UserStatisticsService', () => {
         readingSeconds: 120,
         progressDelta: 1.2346,
         eventsCount: 2,
-        bySource: { bookorbit: 90, koreader: 0, kobo: 30, crosspoint: 0, audiobookshelf: 0 },
+        bySource: { bookorbit: 90, koreader: 0, kobo: 30, crosspoint: 0, audiobookshelf: 0, physical: 0 },
       },
       {
         day: '2026-04-07',
         readingSeconds: 0,
         progressDelta: 0,
         eventsCount: 0,
-        bySource: { bookorbit: 0, koreader: 0, kobo: 0, crosspoint: 0, audiobookshelf: 0 },
+        bySource: { bookorbit: 0, koreader: 0, kobo: 0, crosspoint: 0, audiobookshelf: 0, physical: 0 },
       },
       {
         day: '2026-04-08',
         readingSeconds: 0,
         progressDelta: 0,
         eventsCount: 0,
-        bySource: { bookorbit: 0, koreader: 0, kobo: 0, crosspoint: 0, audiobookshelf: 0 },
+        bySource: { bookorbit: 0, koreader: 0, kobo: 0, crosspoint: 0, audiobookshelf: 0, physical: 0 },
       },
     ]);
   });
@@ -242,7 +242,7 @@ describe('UserStatisticsService', () => {
         hour: 8,
         readingSeconds: 600,
         eventsCount: 3,
-        bySource: { bookorbit: 400, koreader: 0, kobo: 200, crosspoint: 0, audiobookshelf: 0 },
+        bySource: { bookorbit: 400, koreader: 0, kobo: 200, crosspoint: 0, audiobookshelf: 0, physical: 0 },
       }),
     );
     expect(result[21]).toEqual(
@@ -250,7 +250,7 @@ describe('UserStatisticsService', () => {
         hour: 21,
         readingSeconds: 900,
         eventsCount: 4,
-        bySource: { bookorbit: 0, koreader: 900, kobo: 0, crosspoint: 0, audiobookshelf: 0 },
+        bySource: { bookorbit: 0, koreader: 900, kobo: 0, crosspoint: 0, audiobookshelf: 0, physical: 0 },
       }),
     );
     expect(result[0]).toEqual(
@@ -258,7 +258,7 @@ describe('UserStatisticsService', () => {
         hour: 0,
         readingSeconds: 0,
         eventsCount: 0,
-        bySource: { bookorbit: 0, koreader: 0, kobo: 0, crosspoint: 0, audiobookshelf: 0 },
+        bySource: { bookorbit: 0, koreader: 0, kobo: 0, crosspoint: 0, audiobookshelf: 0, physical: 0 },
       }),
     );
   });
@@ -295,14 +295,14 @@ describe('UserStatisticsService', () => {
       readingSeconds: 1800,
       eventsCount: 6,
       byFormat: { EPUB: 1200, PDF: 600 },
-      bySource: { bookorbit: 600, koreader: 1200, kobo: 0, crosspoint: 0, audiobookshelf: 0 },
+      bySource: { bookorbit: 600, koreader: 1200, kobo: 0, crosspoint: 0, audiobookshelf: 0, physical: 0 },
     });
     expect(result[0]).toEqual({
       dayOfWeek: 0,
       readingSeconds: 0,
       eventsCount: 0,
       byFormat: {},
-      bySource: { bookorbit: 0, koreader: 0, kobo: 0, crosspoint: 0, audiobookshelf: 0 },
+      bySource: { bookorbit: 0, koreader: 0, kobo: 0, crosspoint: 0, audiobookshelf: 0, physical: 0 },
     });
   });
 
@@ -784,7 +784,7 @@ describe('UserStatisticsService', () => {
 
     await expect(service.getSessionArchetypes(user, { libraryIds: [1] })).resolves.toEqual([{ hour: 9, durationMinutes: 20, dayOfWeek: 2 }]);
     await expect(service.getGenreReadingTime(user, { libraryIds: [1] })).resolves.toEqual([
-      { genre: 'Sci-Fi', readingSeconds: 300, bySource: { bookorbit: 200, koreader: 0, kobo: 100, crosspoint: 0, audiobookshelf: 0 } },
+      { genre: 'Sci-Fi', readingSeconds: 300, bySource: { bookorbit: 200, koreader: 0, kobo: 100, crosspoint: 0, audiobookshelf: 0, physical: 0 } },
     ]);
     await expect(service.getReadingPace(user, { libraryIds: [1] })).resolves.toEqual([
       { durationSeconds: 240, progressDelta: 1.4, bucket: 'bookorbit', format: 'EPUB' },

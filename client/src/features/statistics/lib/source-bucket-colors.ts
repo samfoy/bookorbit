@@ -9,6 +9,7 @@ export const SOURCE_BUCKET_COLOR_TOKENS: Record<ReadingSessionSourceBucket, stri
   kobo: '--pill-kobo',
   crosspoint: '--pill-crosspoint',
   audiobookshelf: '--pill-audiobookshelf',
+  physical: '--pill-physical',
 }
 
 const cache = new Map<string, Record<ReadingSessionSourceBucket, string>>()
@@ -45,6 +46,7 @@ export function resolveSourceBucketColors(themeKey: string): Record<ReadingSessi
     kobo: toParseableColor(readCssColor(SOURCE_BUCKET_COLOR_TOKENS.kobo)),
     crosspoint: toParseableColor(readCssColor(SOURCE_BUCKET_COLOR_TOKENS.crosspoint)),
     audiobookshelf: toParseableColor(readCssColor(SOURCE_BUCKET_COLOR_TOKENS.audiobookshelf)),
+    physical: toParseableColor(readCssColor(SOURCE_BUCKET_COLOR_TOKENS.physical)),
   }
   cache.set(themeKey, colors)
   return colors

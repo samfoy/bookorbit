@@ -491,6 +491,13 @@
       "when": 1787023974136,
       "tag": "0069_add_author_metadata_fields",
       "breakpoints": true
+    },
+    {
+      "idx": 70,
+      "version": "7",
+      "when": 1787075527298,
+      "tag": "0070_fork_sources_and_physical_books",
+      "breakpoints": true
     }
   ]
 }

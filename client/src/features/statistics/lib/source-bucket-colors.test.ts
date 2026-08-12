@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
           '--pill-kobo': 'oklch(0.74 0.1 195)',
           '--pill-crosspoint': 'oklch(0.7 0.15 145)',
           '--pill-audiobookshelf': 'oklch(0.76 0.13 65)',
+          '--pill-physical': 'oklch(0.73 0.14 350)',
         }) as Record<string, string>
       )[varName] ?? 'oklch(0.5 0.1 0)',
   ),
@@ -32,6 +33,7 @@ describe('source-bucket-colors', () => {
       kobo: '--pill-kobo',
       crosspoint: '--pill-crosspoint',
       audiobookshelf: '--pill-audiobookshelf',
+      physical: '--pill-physical',
     })
   })
 
@@ -44,13 +46,15 @@ describe('source-bucket-colors', () => {
       kobo: '#abcdef',
       crosspoint: '#abcdef',
       audiobookshelf: '#abcdef',
+      physical: '#abcdef',
     })
     expect(mocks.readCssColor).toHaveBeenCalledWith('--pill-web')
     expect(mocks.readCssColor).toHaveBeenCalledWith('--pill-koreader')
     expect(mocks.readCssColor).toHaveBeenCalledWith('--pill-kobo')
     expect(mocks.readCssColor).toHaveBeenCalledWith('--pill-crosspoint')
     expect(mocks.readCssColor).toHaveBeenCalledWith('--pill-audiobookshelf')
-    expect(mocks.oklchToHex).toHaveBeenCalledTimes(5)
+    expect(mocks.readCssColor).toHaveBeenCalledWith('--pill-physical')
+    expect(mocks.oklchToHex).toHaveBeenCalledTimes(6)
   })
 
   it('passes through values that are already rgb/hex', () => {
