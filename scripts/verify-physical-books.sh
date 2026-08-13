@@ -122,8 +122,16 @@ grep -q "books_medium_chk" server/src/db/schema/books.ts \
   || fail "books schema lacks the medium check constraint"
 test -f server/src/db/schema/physical.ts \
   || fail "server/src/db/schema/physical.ts is missing"
-grep -q "bookPhysicalCopies" server/src/db/schema/index.ts \
-  || fail "physical copies table is not re-exported from the schema index"
+# The schema index uses a barrel re-export (`export * from './physical'`) like every
+# sibling module -- it never names individual tables. Assert the barrel line, and
+# separately assert a real consumer imports the table THROUGH that index, which is
+# what actually proves the export resolves (the server typecheck would fail if not).
+grep -qE "export \* from './physical'" server/src/db/schema/index.ts \
+  || fail "physical schema is not re-exported from the schema index"
+grep -q "from '../../db/schema'" server/src/modules/physical-book/physical-book.repository.ts \
+  || fail "physical-book repository does not import the schema through the index"
+grep -q "bookPhysicalCopies" server/src/modules/physical-book/physical-book.repository.ts \
+  || fail "physical-book repository does not reference the bookPhysicalCopies table"
 # A physical-books migration must be ADDITIVE. It must never rewrite reading_progress,
 # whose (book_file_id, user_id) primary key is load-bearing for Kobo + Hardcover sync.
 # NOTE: match OUR migration by NAME, not by a number glob. The fork gets renumbered on every
