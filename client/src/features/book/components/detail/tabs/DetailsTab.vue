@@ -288,6 +288,13 @@ onBeforeUnmount(() => {
 })
 
 const { hasPermission } = usePermissions()
+
+/**
+ * A physical book is a fileless `books` row, so file-backed controls (download,
+ * reader) have nothing to act on. BookDownloadButton would render permanently
+ * disabled rather than hidden, so gate it here instead.
+ */
+const isPhysical = computed(() => props.book.medium === 'physical')
 const { load: loadLocks, isLocked } = useMetadataLocks()
 watch(
   () => props.book,
@@ -1394,7 +1401,7 @@ watch(
         </TooltipTrigger>
         <TooltipContent>{{ t('book.detail.details.peek') }}</TooltipContent>
       </Tooltip>
-      <div v-if="hasPermission('library_download')" class="w-12 shrink-0">
+      <div v-if="hasPermission('library_download') && !isPhysical" class="w-12 shrink-0">
         <BookDownloadButton :files="book.files" :book-id="book.id" />
       </div>
       <button
@@ -1569,7 +1576,7 @@ watch(
           </div>
 
           <div class="flex gap-2">
-            <div v-if="hasPermission('library_download')" class="flex-1">
+            <div v-if="hasPermission('library_download') && !isPhysical" class="flex-1">
               <BookDownloadButton :files="book.files" :book-id="book.id" />
             </div>
             <button

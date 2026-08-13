@@ -198,6 +198,8 @@ export type BookDetail = {
   libraryId: number;
   libraryName: string;
   status: string;
+  /** 'file' for a file-backed book, 'physical' for a real-world copy with no file. */
+  medium: BookMedium;
   folderPath: string;
   addedAt: string;
   updatedAt: string | null;

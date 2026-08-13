@@ -34,6 +34,7 @@ function makeBook(overrides = {}) {
     id: 10,
     libraryId: 1,
     libraryName: 'My Library',
+    medium: 'file' as const,
     status: 'ok',
     folderPath: '/books',
     addedAt: '2026-01-01T00:00:00.000Z',

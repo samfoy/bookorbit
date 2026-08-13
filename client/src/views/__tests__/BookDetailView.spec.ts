@@ -65,6 +65,7 @@ function makeBook(overrides: Partial<BookDetail> = {}): BookDetail {
     libraryId: 1,
     libraryName: 'Test Library',
     status: 'present',
+    medium: 'file' as const,
     folderPath: '/books',
     addedAt: '2026-01-01T00:00:00.000Z',
     updatedAt: null,
