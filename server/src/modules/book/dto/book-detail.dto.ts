@@ -1,5 +1,6 @@
 import type {
   AudiobookChapter,
+  BookMedium,
   BookFileWriteStatus,
   BookSeriesMembership,
   BookMetadataLockField,
@@ -34,6 +35,8 @@ export class BookDetailDto {
   libraryId: number;
   libraryName: string;
   status: string;
+  /** 'file' for a file-backed book, 'physical' for a real-world copy with no file. */
+  medium: BookMedium;
   folderPath: string;
   addedAt: Date;
   updatedAt: Date | null;

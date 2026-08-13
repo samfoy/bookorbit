@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, provide, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { computed, defineAsyncComponent, provide, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import type { BookDetail, BookMetadataLockField } from '@bookorbit/types'
 import BookDetailLayout from '@/features/book/components/detail/BookDetailLayout.vue'
@@ -19,12 +19,16 @@ import { useCoverVersions } from '@/features/book/composables/useCoverVersions'
 import { useCoverTint } from '@/features/book/composables/useCoverTint'
 import { useDisplaySettings } from '@/composables/useDisplaySettings'
 import EntityNotFound from '@/components/EntityNotFound.vue'
+import PhysicalCopyPanel from '@/features/physical-book/components/PhysicalCopyPanel.vue'
+import LogPagesDialog from '@/features/physical-book/components/LogPagesDialog.vue'
+import { usePhysicalCopy } from '@/features/physical-book/composables/usePhysicalCopy'
 
 const ReadingLogTab = defineAsyncComponent(() => import('@/features/book/components/detail/tabs/ReadingLogTab.vue'))
 const HighlightsTab = defineAsyncComponent(() => import('@/features/book/components/detail/tabs/HighlightsTab.vue'))
 
 const { t } = useI18n()
 const route = useRoute()
+const router = useRouter()
 const { hasPermission } = usePermissions()
 const { libraries } = useLibraries()
 
@@ -67,6 +71,51 @@ const coverTint = computed(() => {
   if (bookDetailCoverTint.value === 'single') return { ...tint.value, secondary: null }
   return tint.value
 })
+
+/**
+ * Physical-copy state for this book.
+ *
+ * Only books with `medium === 'physical'` have a copy row, so the fetch is gated
+ * on that: firing it for every ebook would 404 on each detail view.
+ */
+const physical = usePhysicalCopy(() => (detail.value ? detail.value.id : null))
+const physicalCopy = computed(() => physical.copy.value)
+const physicalSaving = computed(() => physical.saving.value)
+const physicalError = computed(() => physical.error.value)
+const logPagesOpen = ref(false)
+
+watch(
+  () => (detail.value?.medium === 'physical' ? detail.value.id : null),
+  (id) => {
+    if (id !== null) void physical.load()
+    else physical.copy.value = null
+  },
+  { immediate: true },
+)
+
+function openLogPages() {
+  logPagesOpen.value = true
+}
+
+function closeLogPages() {
+  logPagesOpen.value = false
+}
+
+async function handleLogPages(payload: { currentPage: number; minutes?: number }) {
+  const ok = await physical.logProgress(payload)
+  if (!ok) return
+  logPagesOpen.value = false
+  // Reaching 100% flips read status server-side, so refetch to show it.
+  if (detail.value) void fetch(detail.value.id)
+}
+
+async function handleMarkReturned() {
+  await physical.markReturned()
+}
+
+function goToEditTab() {
+  void router.push({ query: { ...route.query, tab: 'edit' } })
+}
 
 const { subscribeLibrary } = useScanProgress()
 watch(
@@ -120,7 +169,28 @@ function onCoverChanged(source: 'extracted' | 'custom' | null) {
   <BookDetailLayout :book-id="bookId" :cover-tint="coverTint">
     <Transition name="content" mode="out-in">
       <div v-if="detail" key="detail">
-        <DetailsTab v-if="tab === 'details'" :book="detail" @saved="onMetadataSaved" @moved="handleMovedToLibrary" />
+        <template v-if="tab === 'details'">
+          <DetailsTab :book="detail" @saved="onMetadataSaved" @moved="handleMovedToLibrary" />
+          <PhysicalCopyPanel
+            v-if="physicalCopy"
+            class="mt-6"
+            :copy="physicalCopy"
+            :saving="physicalSaving"
+            @log-pages="openLogPages"
+            @mark-returned="handleMarkReturned"
+            @edit="goToEditTab"
+          />
+          <LogPagesDialog
+            v-if="physicalCopy"
+            :open="logPagesOpen"
+            :current-page="physicalCopy.currentPage"
+            :page-count="physicalCopy.effectivePageCount"
+            :saving="physicalSaving"
+            :error="physicalError"
+            @close="closeLogPages"
+            @submit="handleLogPages"
+          />
+        </template>
         <EditMetadataTab
           v-else-if="tab === 'edit' && hasPermission('library_edit_metadata')"
           :book="detail"

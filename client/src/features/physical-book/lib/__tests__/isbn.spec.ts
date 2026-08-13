@@ -57,7 +57,7 @@ describe('isValidIsbn10', () => {
 
   it('rejects every wrong check digit for a known prefix', () => {
     const correct = isbn10CheckDigit(DUNE_9)
-    for (const d of [...'0123456789X']) {
+    for (const d of '0123456789X') {
       if (d === correct) continue
       expect(isValidIsbn10(DUNE_9 + d)).toBe(false)
     }
@@ -72,7 +72,7 @@ describe('isValidIsbn13', () => {
   it('rejects every wrong check digit for a known prefix', () => {
     const twelve = DUNE_13.slice(0, 12)
     const correct = isbn13CheckDigit(twelve)
-    for (const d of [...'0123456789']) {
+    for (const d of '0123456789') {
       if (d === correct) continue
       expect(isValidIsbn13(twelve + d)).toBe(false)
     }

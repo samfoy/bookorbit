@@ -3070,6 +3070,7 @@ export class BookService {
       libraryId: book.books.libraryId,
       libraryName: book.libraries?.name ?? '',
       status: book.books.status,
+      medium: book.books.medium,
       folderPath: book.books.folderPath,
       addedAt: book.books.addedAt,
       updatedAt: book.books.updatedAt ?? null,
