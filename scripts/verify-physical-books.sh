@@ -196,9 +196,13 @@ echo "== [11/11] every physical-book component is REACHABLE from the app =="
 # had zero consumers, so a physical book could only be added via the API. Assert that
 # each component is imported by something OUTSIDE its own directory.
 for comp in AddPhysicalBookSheet PhysicalCopyPanel LogPagesDialog; do
-  consumers=$(grep -rl "$comp" client/src --include=*.vue --include=*.ts 2>/dev/null \
-    | grep -v "client/src/features/physical-book/components/$comp.vue" \
-    | grep -v "__tests__" | wc -l | tr -d ' ')
+  # NOTE: this gate runs inside node:24-alpine, whose BusyBox grep does NOT support
+  # --include. Using it made this check silently find zero matches and fail every
+  # component as "unreachable". Enumerate files with find and grep them by name instead;
+  # that works identically under GNU grep and BusyBox.
+  consumers=$(find client/src -type f \( -name '*.vue' -o -name '*.ts' \) \
+    ! -path "*/features/physical-book/components/$comp.vue" \
+    ! -path '*__tests__*' -exec grep -l "$comp" {} + 2>/dev/null | wc -l | tr -d ' ')
   if [ "$consumers" -eq 0 ]; then
     fail "$comp has no consumer outside its own file - it is unreachable in the UI"
   fi
