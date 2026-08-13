@@ -83,6 +83,8 @@ export interface Library {
   fileRenameEnabled: boolean;
   folders: LibraryFolder[];
   bookCount?: number;
+  /** Books in this library with `medium = 'physical'`. Used to default the add-physical-book target. */
+  physicalBookCount?: number;
   createdAt: string;
   updatedAt: string;
 }

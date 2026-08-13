@@ -175,7 +175,7 @@ grep -rqE "currentPage" server/src/modules/physical-book/ \
 grep -rqE "ReadingSession|readingSession" server/src/modules/physical-book/ \
   || fail "page progress does not route through the reading-session layer"
 
-echo "== [10/10] loan urgency + scanner guard (requirements A/C) =="
+echo "== [10/11] loan urgency + scanner guard (requirements A/C) =="
 test -f server/src/modules/physical-book/utils/loan-urgency.utils.ts \
   || fail "loan-urgency.utils.ts is missing"
 test -f server/src/modules/physical-book/utils/loan-urgency.utils.test.ts \
@@ -190,4 +190,32 @@ grep -q "medium" server/src/modules/scanner/scanner.repository.ts \
   || fail "scanner repository does not filter on medium - physical books will be marked missing"
 
 echo
-echo "GATE PASS: all 10 checks green"
+echo "== [11/11] every physical-book component is REACHABLE from the app =="
+# A component with no call site compiles, tests, and ships in the bundle while being
+# completely unusable. That happened once: AddPhysicalBookSheet was built, deployed, and
+# had zero consumers, so a physical book could only be added via the API. Assert that
+# each component is imported by something OUTSIDE its own directory.
+for comp in AddPhysicalBookSheet PhysicalCopyPanel LogPagesDialog; do
+  consumers=$(grep -rl "$comp" client/src --include=*.vue --include=*.ts 2>/dev/null \
+    | grep -v "client/src/features/physical-book/components/$comp.vue" \
+    | grep -v "__tests__" | wc -l | tr -d ' ')
+  if [ "$consumers" -eq 0 ]; then
+    fail "$comp has no consumer outside its own file - it is unreachable in the UI"
+  fi
+done
+# The add sheet specifically must hang off the app header, which is the app's
+# established place for 'add a book' actions (it already hosts BookUploadModal).
+grep -q "AddPhysicalBookSheet" client/src/components/AppHeader.vue \
+  || fail "AddPhysicalBookSheet is not mounted in AppHeader"
+grep -q "openAddPhysical" client/src/components/AppHeader.vue \
+  || fail "AppHeader has no handler that opens the add-physical-book sheet"
+# And the target library must be resolved, never hardcoded.
+test -f client/src/features/physical-book/lib/default-library.ts \
+  || fail "default-library.ts is missing (library id would have to be hardcoded)"
+test -f client/src/features/physical-book/lib/__tests__/default-library.spec.ts \
+  || fail "default-library has no tests - the fallback order must be tested"
+grep -q "resolveDefaultPhysicalLibrary" client/src/components/AppHeader.vue \
+  || fail "AppHeader does not resolve the default physical library"
+
+echo
+echo "GATE PASS: all 11 checks green"

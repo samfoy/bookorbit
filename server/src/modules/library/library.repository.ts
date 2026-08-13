@@ -20,6 +20,9 @@ export class LibraryRepository {
       .select({
         ...getTableColumns(libraries),
         bookCount: sql<number>`count(${books.id})::int`,
+        // Counted in the SAME aggregate as bookCount -- no extra query -- so the client can
+        // pick a sensible default library for physical books instead of hardcoding an id.
+        physicalBookCount: sql<number>`count(case when ${books.medium} = 'physical' then 1 end)::int`,
       })
       .from(libraries)
       .leftJoin(books, eq(books.libraryId, libraries.id))
@@ -42,6 +45,7 @@ export class LibraryRepository {
         createdAt: libraries.createdAt,
         updatedAt: libraries.updatedAt,
         bookCount: sql<number>`count(${books.id})::int`,
+        physicalBookCount: sql<number>`count(case when ${books.medium} = 'physical' then 1 end)::int`,
       })
       .from(libraries)
       .innerJoin(schema.userLibraryAccess, and(eq(schema.userLibraryAccess.libraryId, libraries.id), eq(schema.userLibraryAccess.userId, userId)))

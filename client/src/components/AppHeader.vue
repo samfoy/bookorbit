@@ -5,6 +5,7 @@ import {
   Search,
   Palette,
   Upload,
+  BookMarked,
   X,
   KeyRound,
   Settings,
@@ -50,12 +51,21 @@ import { useAuth } from '@/features/auth/composables/useAuth'
 import { useChangePasswordDialog } from '@/composables/useChangePasswordDialog'
 import { usePermissions } from '@/features/auth/composables/usePermissions'
 import BookUploadModal from '@/features/library/components/BookUploadModal.vue'
+import AddPhysicalBookSheet from '@/features/physical-book/components/AddPhysicalBookSheet.vue'
+import { useLibraries } from '@/features/library/composables/useLibraries'
+import { resolveDefaultPhysicalLibrary } from '@/features/physical-book/lib/default-library'
+import {
+  bulkImportPhysicalBooks,
+  createPhysicalBook,
+  lookupPhysicalIsbn,
+  type CreatePhysicalBookInput,
+} from '@/features/physical-book/api/physical-book.api'
 import { useLibraryUploadEvents } from '@/features/library/composables/useLibraryUploadEvents'
 import NotificationSheet from '@/features/notifications/components/NotificationSheet.vue'
 import { useNotifications } from '@/features/notifications/composables/useNotifications'
 import { useWhatsNew } from '@/features/whats-new/composables/useWhatsNew'
 import UserAvatar from '@/components/UserAvatar.vue'
-import { DEFAULT_FORMAT_PRIORITY, LOCALE_LABELS, SUPPORTED_LOCALES, type Locale } from '@bookorbit/types'
+import { DEFAULT_FORMAT_PRIORITY, LOCALE_LABELS, SUPPORTED_LOCALES, type Locale, type MetadataCandidate } from '@bookorbit/types'
 import { useThemeStore } from '@/stores/theme'
 import { useLocaleStore } from '@/stores/locale'
 import { getFormatColor } from '@/features/book/lib/format-colors'
@@ -138,6 +148,103 @@ function navigateToWhatsNew() {
 }
 
 const uploadOpen = ref(false)
+
+/**
+ * Add-physical-book sheet.
+ *
+ * The target library is resolved rather than hardcoded: whichever library already
+ * holds physical books, else one whose NAME reads like a physical shelf (so the
+ * first-ever add does not land in the ebook library), else the only library. When
+ * that yields nothing the sheet shows a picker.
+ */
+const { libraries, fetchLibraries } = useLibraries()
+const addPhysicalOpen = ref(false)
+const physicalSaving = ref(false)
+const physicalLooking = ref(false)
+const physicalError = ref<string | null>(null)
+const physicalCandidate = ref<MetadataCandidate | null>(null)
+const physicalConflictBookId = ref<number | null>(null)
+
+const physicalLibraryId = computed(() => resolveDefaultPhysicalLibrary(libraries.value)?.id ?? null)
+
+async function openAddPhysical() {
+  physicalError.value = null
+  physicalCandidate.value = null
+  physicalConflictBookId.value = null
+  addPhysicalOpen.value = true
+  // The sheet needs a library before it can submit; fetchLibraries is a no-op once loaded.
+  await fetchLibraries()
+}
+
+function closeAddPhysical() {
+  addPhysicalOpen.value = false
+}
+
+async function handlePhysicalLookup(isbn: string) {
+  physicalLooking.value = true
+  physicalError.value = null
+  physicalCandidate.value = null
+  physicalConflictBookId.value = null
+  try {
+    physicalCandidate.value = await lookupPhysicalIsbn(isbn)
+  } catch (err) {
+    physicalError.value = err instanceof Error ? err.message : 'Lookup failed'
+  } finally {
+    physicalLooking.value = false
+  }
+}
+
+async function handlePhysicalSubmit(payload: Omit<CreatePhysicalBookInput, 'libraryId'>) {
+  const libraryId = physicalLibraryId.value
+  if (libraryId === null) {
+    physicalError.value = t('physicalBook.add.noLibrary')
+    return
+  }
+  physicalSaving.value = true
+  physicalError.value = null
+  physicalConflictBookId.value = null
+  try {
+    const result = await createPhysicalBook({ ...payload, libraryId })
+    if (result.conflict) {
+      // Not a failure: this ISBN is already shelved. Surface it so the user can jump to it.
+      physicalConflictBookId.value = result.bookId
+      return
+    }
+    addPhysicalOpen.value = false
+    await router.push({ name: 'book-detail', params: { bookId: result.bookId } })
+  } catch (err) {
+    physicalError.value = err instanceof Error ? err.message : 'Could not add the book'
+  } finally {
+    physicalSaving.value = false
+  }
+}
+
+async function handlePhysicalBulk(payload: { isbns: string[]; acquisition: CreatePhysicalBookInput['acquisition']; lender?: string }) {
+  const libraryId = physicalLibraryId.value
+  if (libraryId === null) {
+    physicalError.value = t('physicalBook.add.noLibrary')
+    return
+  }
+  physicalSaving.value = true
+  physicalError.value = null
+  try {
+    const result = await bulkImportPhysicalBooks({ ...payload, libraryId })
+    if (result.failed.length > 0 && result.created.length === 0) {
+      physicalError.value = t('physicalBook.add.bulkAllFailed', { count: result.failed.length })
+      return
+    }
+    addPhysicalOpen.value = false
+  } catch (err) {
+    physicalError.value = err instanceof Error ? err.message : 'Bulk import failed'
+  } finally {
+    physicalSaving.value = false
+  }
+}
+
+async function handleOpenConflictBook(bookId: number) {
+  addPhysicalOpen.value = false
+  await router.push({ name: 'book-detail', params: { bookId } })
+}
 
 const searchFocused = ref(false)
 const mobileSearchOpen = ref(false)
@@ -633,6 +740,10 @@ function formatBadgeStyle(fmt: string) {
               <Upload :size="15" class="mr-2 text-muted-foreground" />
               {{ t('components.appHeader.uploadBooks') }}
             </DropdownMenuItem>
+            <DropdownMenuItem v-if="hasPermission('library_upload')" @click="openAddPhysical">
+              <BookMarked :size="15" class="mr-2 text-muted-foreground" />
+              {{ t('components.appHeader.addPhysicalBook') }}
+            </DropdownMenuItem>
 
             <DropdownMenuSeparator />
 
@@ -738,6 +849,14 @@ function formatBadgeStyle(fmt: string) {
               </Button>
             </TooltipTrigger>
             <TooltipContent>{{ t('components.appHeader.uploadBooks') }}</TooltipContent>
+          </Tooltip>
+          <Tooltip v-if="hasPermission('library_upload')">
+            <TooltipTrigger as-child>
+              <Button data-tour="add-physical-button" variant="ghost" size="icon" :class="controlClass" @click="openAddPhysical">
+                <BookMarked :size="15" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{{ t('components.appHeader.addPhysicalBook') }}</TooltipContent>
           </Tooltip>
         </div>
 
@@ -929,4 +1048,20 @@ function formatBadgeStyle(fmt: string) {
   </header>
 
   <BookUploadModal v-if="uploadOpen" @close="uploadOpen = false" @uploaded="uploadOpen = false" />
+
+  <AddPhysicalBookSheet
+    v-if="addPhysicalOpen"
+    :open="addPhysicalOpen"
+    :library-id="physicalLibraryId"
+    :saving="physicalSaving"
+    :error="physicalError"
+    :candidate="physicalCandidate"
+    :looking="physicalLooking"
+    :conflict-book-id="physicalConflictBookId"
+    @close="closeAddPhysical"
+    @lookup="handlePhysicalLookup"
+    @submit="handlePhysicalSubmit"
+    @bulk="handlePhysicalBulk"
+    @open-book="handleOpenConflictBook"
+  />
 </template>

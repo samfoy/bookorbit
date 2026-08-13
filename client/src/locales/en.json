@@ -4547,7 +4547,8 @@
         "cta": "Star BookOrbit on GitHub"
       },
       "surfaceOpacity": "Surface opacity",
-      "surfaceOpacityValue": "{value}%"
+      "surfaceOpacityValue": "{value}%",
+      "addPhysicalBook": "Add physical book"
     },
     "sidebar": {
       "dashboard": "Dashboard",
@@ -7191,7 +7192,8 @@
       "noLibrary": "Pick a library for physical books first.",
       "lenderRequired": "Add who you borrowed it from.",
       "needIsbnOrTitle": "Enter an ISBN or a title.",
-      "noValidIsbns": "No valid ISBNs in that list."
+      "noValidIsbns": "No valid ISBNs in that list.",
+      "bulkAllFailed": "None of those {count} ISBNs could be added."
     }
   }
 }
