@@ -32,16 +32,13 @@ const URGENCY_CLASSES: Record<LoanUrgency, string> = {
   overdue: 'border-[var(--urgency-overdue)]/40 bg-[var(--urgency-overdue)]/10 text-[var(--urgency-overdue)]',
   urgent: 'border-[var(--urgency-urgent)]/40 bg-[var(--urgency-urgent)]/10 text-[var(--urgency-urgent)]',
   tight: 'border-[var(--urgency-tight)]/40 bg-[var(--urgency-tight)]/10 text-[var(--urgency-tight)]',
-  comfortable:
-    'border-[var(--urgency-comfortable)]/40 bg-[var(--urgency-comfortable)]/10 text-[var(--urgency-comfortable)]',
+  comfortable: 'border-[var(--urgency-comfortable)]/40 bg-[var(--urgency-comfortable)]/10 text-[var(--urgency-comfortable)]',
 }
 
 const isLoan = computed(() => props.copy.acquisition !== 'owned')
 const isReturned = computed(() => props.copy.returnedOn !== null)
 
-const percentageLabel = computed(() =>
-  props.copy.percentage === null ? null : `${Math.round(props.copy.percentage * 10) / 10}%`,
-)
+const percentageLabel = computed(() => (props.copy.percentage === null ? null : `${Math.round(props.copy.percentage * 10) / 10}%`))
 
 const progressWidth = computed(() => `${Math.max(0, Math.min(100, props.copy.percentage ?? 0))}%`)
 
