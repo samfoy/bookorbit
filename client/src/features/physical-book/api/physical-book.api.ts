@@ -55,9 +55,7 @@ export async function lookupPhysicalIsbn(isbn: string): Promise<MetadataCandidat
   return res.json()
 }
 
-export type CreatePhysicalBookOutcome =
-  | { conflict: true; bookId: number }
-  | { conflict: false; bookId: number; copy: PhysicalCopySummary }
+export type CreatePhysicalBookOutcome = { conflict: true; bookId: number } | { conflict: false; bookId: number; copy: PhysicalCopySummary }
 
 /**
  * Shelve a physical copy.

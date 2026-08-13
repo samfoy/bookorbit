@@ -29,7 +29,17 @@ const props = defineProps<{
 const emit = defineEmits<{
   close: []
   lookup: [isbn: string]
-  submit: [payload: { isbn?: string; title?: string; author?: string; acquisition: PhysicalAcquisition; lender?: string; dueOn?: string; pageCount?: number }]
+  submit: [
+    payload: {
+      isbn?: string
+      title?: string
+      author?: string
+      acquisition: PhysicalAcquisition
+      lender?: string
+      dueOn?: string
+      pageCount?: number
+    },
+  ]
   bulk: [payload: { isbns: string[]; acquisition: PhysicalAcquisition; lender?: string }]
   openBook: [bookId: number]
 }>()
@@ -51,7 +61,14 @@ const scannedCount = ref(0)
 
 const isLoan = computed(() => acquisition.value !== 'owned')
 
-const { status: scanStatus, error: scanError, lastRejected, videoEl, start: startScan, stop: stopScan } = useBarcodeScanner({
+const {
+  status: scanStatus,
+  error: scanError,
+  lastRejected,
+  videoEl,
+  start: startScan,
+  stop: stopScan,
+} = useBarcodeScanner({
   onIsbn: (found) => {
     isbn.value = found
     scannedCount.value += 1
@@ -205,20 +222,14 @@ const shownError = computed(() => localError.value ?? props.error ?? scanError.v
       <div class="mb-4 flex gap-1 rounded-lg border border-border p-1">
         <button
           type="button"
-          :class="[
-            'flex-1 rounded-md px-3 py-1.5 text-xs',
-            mode === 'single' ? 'bg-muted font-medium text-foreground' : 'text-muted-foreground',
-          ]"
+          :class="['flex-1 rounded-md px-3 py-1.5 text-xs', mode === 'single' ? 'bg-muted font-medium text-foreground' : 'text-muted-foreground']"
           @click="setModeSingle"
         >
           {{ t('physicalBook.add.modeSingle') }}
         </button>
         <button
           type="button"
-          :class="[
-            'flex-1 rounded-md px-3 py-1.5 text-xs',
-            mode === 'batch' ? 'bg-muted font-medium text-foreground' : 'text-muted-foreground',
-          ]"
+          :class="['flex-1 rounded-md px-3 py-1.5 text-xs', mode === 'batch' ? 'bg-muted font-medium text-foreground' : 'text-muted-foreground']"
           @click="setModeBatch"
         >
           {{ t('physicalBook.add.modeBatch') }}
@@ -290,12 +301,7 @@ const shownError = computed(() => localError.value ?? props.error ?? scanError.v
         </div>
 
         <div v-if="candidate" class="mt-3 flex gap-3 rounded-lg border border-border bg-background p-3">
-          <img
-            v-if="candidate.coverUrl"
-            :src="candidate.coverUrl"
-            alt=""
-            class="h-20 w-14 flex-none rounded object-cover"
-          />
+          <img v-if="candidate.coverUrl" :src="candidate.coverUrl" alt="" class="h-20 w-14 flex-none rounded object-cover" />
           <div class="min-w-0">
             <p class="truncate text-sm font-medium text-foreground">{{ candidate.title }}</p>
             <p v-if="candidate.authors?.length" class="truncate text-xs text-muted-foreground">
