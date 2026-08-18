@@ -574,10 +574,26 @@ export class UserStatisticsRepository {
     const perBookProgress = this.db
       .select({
         bookId: readingSessions.bookId,
-        maxPercentage: sql<number>`max(${readingSessions.endProgress})`.as('max_percentage'),
+        // A book the user has explicitly marked finished counts as 100%, whatever the
+        // device last reported. Session progress caps out below 100 in normal use --
+        // an EPUB's last-page CFI tops out around 99.8% and an audiobook stops short of
+        // the end credits -- so a strict `max(end_progress) >= 100` test scored books
+        // the user had genuinely finished as incomplete. `read` is the deliberate
+        // "I finished this" signal and `skimmed` is a finished-by-choice outcome, so
+        // both saturate the percentage instead of being second-guessed.
+        maxPercentage: sql<number>`
+          case
+            when max(case when ${userBookStatus.status} in ('read', 'skimmed') then 1 else 0 end) = 1 then 100
+            else max(${readingSessions.endProgress})
+          end
+        `.as('max_percentage'),
       })
       .from(readingSessions)
       .innerJoin(books, eq(books.id, readingSessions.bookId))
+      .leftJoin(
+        userBookStatus,
+        and(eq(userBookStatus.bookId, readingSessions.bookId), eq(userBookStatus.userId, userId)),
+      )
       .where(and(eq(readingSessions.userId, userId), timeFilter, libraryFilter, isNotNull(readingSessions.endProgress)))
       .groupBy(readingSessions.bookId)
       .as('per_book_progress');

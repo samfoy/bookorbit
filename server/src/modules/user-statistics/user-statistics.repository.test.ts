@@ -371,6 +371,35 @@ describe('UserStatisticsRepository', () => {
     ]);
   });
 
+  it('compiles progress funnel SQL that treats a finished status as 100 percent', async () => {
+    const calls: Array<{ text: string; params: unknown[] }> = [];
+    const fakeClient = {
+      query: vi.fn().mockImplementation((cfg: { text: string }, params: unknown[]) => {
+        calls.push({ text: cfg.text, params });
+        return Promise.resolve({ rows: [] });
+      }),
+    };
+    const db = drizzle({ client: fakeClient as never, schema });
+    const repo = new UserStatisticsRepository(db as never);
+    vi.spyOn(repo as any, 'getAccessibleLibraryIds').mockResolvedValue([1]);
+
+    await repo.getProgressFunnelInRange(5, false, [1], new Date('2026-04-01T00:00:00.000Z'));
+
+    expect(calls).toHaveLength(1);
+    const [{ text }] = calls;
+    // The per-book percentage must saturate to 100 for an explicitly finished book, so a
+    // device that stops reporting at ~99.8% cannot score a finished book as incomplete.
+    expect(text).toContain('user_book_status');
+    expect(text).toMatch(/case\s+when max\(case when "user_book_status"\."status" in \('read', 'skimmed'\)/);
+    expect(text).toContain('then 100');
+    // Saturating the percentage (rather than special-casing the completed count) is what keeps
+    // the stages monotonic: a book marked read below 75% still counts in every stage beneath it.
+    expect(text).toContain('>= 75');
+    expect(text).toContain('>= 100');
+    // The status join must be user-scoped, or one user's status would leak into another's funnel.
+    expect(text).toMatch(/"user_book_status"\."user_id" = \$\d+/);
+  });
+
   it('returns progress funnel values and defaults when aggregate row is missing', async () => {
     const db = makeDb([[], [{ started: 5, reached25: 4, reached50: 3, reached75: 2, completed: 1 }], [], []]);
     const repo = new UserStatisticsRepository(db as never);
