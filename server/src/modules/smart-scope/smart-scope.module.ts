@@ -1,13 +1,14 @@
 import { Module } from '@nestjs/common';
 
 import { BookModule } from '../book/book.module';
+import { CollectionModule } from '../collection/collection.module';
 import { LibraryModule } from '../library/library.module';
 import { SmartScopeController } from './smart-scope.controller';
 import { SmartScopeRepository } from './smart-scope.repository';
 import { SmartScopeService } from './smart-scope.service';
 
 @Module({
-  imports: [BookModule, LibraryModule],
+  imports: [BookModule, CollectionModule, LibraryModule],
   controllers: [SmartScopeController],
   providers: [SmartScopeService, SmartScopeRepository],
   exports: [SmartScopeService],

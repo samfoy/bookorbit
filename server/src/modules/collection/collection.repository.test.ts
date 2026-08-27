@@ -12,6 +12,7 @@ vi.mock('drizzle-orm', () => ({
 }));
 
 import { CollectionRepository } from './collection.repository';
+import { eq } from 'drizzle-orm';
 
 describe('CollectionRepository', () => {
   const txWhere = vi.fn();
@@ -94,6 +95,19 @@ describe('CollectionRepository', () => {
 
     expect(rows).toEqual([{ id: 1, memberCount: 2 }]);
     expect(db.select).toHaveBeenCalledWith(expect.objectContaining({ memberCount: expect.anything() }));
+  });
+
+  it('findIdByUserAndName uses both owner id and exact name in a bounded query', async () => {
+    const limit = vi.fn().mockResolvedValue([{ id: 42 }]);
+    const where = vi.fn().mockReturnValue({ limit });
+    const from = vi.fn().mockReturnValue({ where });
+    db.select.mockReturnValueOnce({ from } as never);
+
+    await expect(repo.findIdByUserAndName(12, 'Favorites')).resolves.toEqual([{ id: 42 }]);
+
+    expect(eq).toHaveBeenCalledWith(expect.anything(), 12);
+    expect(eq).toHaveBeenCalledWith(expect.anything(), 'Favorites');
+    expect(limit).toHaveBeenCalledWith(1);
   });
 
   it('addBooks and removeBooks issue membership writes with expected payloads', async () => {

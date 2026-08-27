@@ -44,6 +44,7 @@ function makeService() {
   const collectionRepo = {
     findAllForUser: vi.fn(),
     findAllForUserWithMembership: vi.fn(),
+    findIdByUserAndName: vi.fn(),
     findById: vi.fn(),
     insert: vi.fn(),
     update: vi.fn(),
@@ -174,6 +175,25 @@ describe('CollectionService', () => {
       const result = await service.findOne(10, makeUser({ isSuperuser: true }));
 
       expect(result).toEqual(collection);
+    });
+  });
+
+  describe('findIdByNameForUser', () => {
+    it('looks up the exact collection name with the current user id', async () => {
+      const { service, collectionRepo } = makeService();
+      const user = makeUser({ id: 12 });
+      collectionRepo.findIdByUserAndName.mockResolvedValue([{ id: 42 }]);
+
+      await expect(service.findIdByNameForUser('Favorites', user)).resolves.toBe(42);
+      expect(collectionRepo.findIdByUserAndName).toHaveBeenCalledWith(12, 'Favorites');
+    });
+
+    it('returns undefined when the current user has no collection with that name', async () => {
+      const { service, collectionRepo } = makeService();
+      collectionRepo.findIdByUserAndName.mockResolvedValue([]);
+
+      await expect(service.findIdByNameForUser('Foreign collection', makeUser({ id: 12, isSuperuser: true }))).resolves.toBeUndefined();
+      expect(collectionRepo.findIdByUserAndName).toHaveBeenCalledWith(12, 'Foreign collection');
     });
   });
 

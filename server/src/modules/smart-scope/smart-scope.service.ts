@@ -1,7 +1,16 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import type { SQL } from 'drizzle-orm';
 
-import type { BookQuery, BooksPage, GroupRule, JumpBucketsQuery, JumpBucketsResponse, SortSpec } from '@bookorbit/types';
+import {
+  hasCollectionScopedSort,
+  type BookQuery,
+  type BooksPage,
+  type GroupRule,
+  type JumpBucketsQuery,
+  type JumpBucketsResponse,
+  type Rule,
+  type SortSpec,
+} from '@bookorbit/types';
 import type { RequestUser } from '../../common/types/request-user';
 import { normalizeIconValue } from '../../common/utils/icon-value.utils';
 import { sanitizeLogValue } from '../../common/utils/log-sanitize.utils';
@@ -11,11 +20,41 @@ import { BookService } from '../book/book.service';
 import { BookQueryBuilder } from '../book/book-query-builder.service';
 import { BookReadService } from '../book/book-read.service';
 import { validateGroupRule } from '../book/utils/group-rule.validator';
+import { CollectionService } from '../collection/collection.service';
 import { LibraryService } from '../library/library.service';
 import { CreateSmartScopeDto } from './dto/create-smart-scope.dto';
 import { ReorderSmartScopesDto } from './dto/reorder-smart-scopes.dto';
 import { UpdateSmartScopeDto } from './dto/update-smart-scope.dto';
 import { SmartScopeRepository } from './smart-scope.repository';
+
+type CollectionFilterContext = { kind: 'none' } | { kind: 'exact'; name: string } | { kind: 'ambiguous' };
+
+function resolveCollectionFilterContext(node: Rule | GroupRule): CollectionFilterContext {
+  if (node.type === 'rule') {
+    if (node.field !== 'collection' || node.operator !== 'includesAny') return { kind: 'none' };
+    if (!Array.isArray(node.value) || node.value.length === 0 || node.value.some((value) => typeof value !== 'string')) {
+      return { kind: 'ambiguous' };
+    }
+    const names = new Set(node.value.filter((value): value is string => typeof value === 'string'));
+    return names.size === 1 ? { kind: 'exact', name: [...names][0] } : { kind: 'ambiguous' };
+  }
+
+  const contexts = node.rules.map(resolveCollectionFilterContext);
+  if (node.join === 'OR') {
+    if (contexts.every((context) => context.kind === 'none')) return { kind: 'none' };
+    const exactContexts = contexts.filter((context): context is Extract<CollectionFilterContext, { kind: 'exact' }> => context.kind === 'exact');
+    if (exactContexts.length === contexts.length && new Set(exactContexts.map((context) => context.name)).size === 1) {
+      return exactContexts[0];
+    }
+    return { kind: 'ambiguous' };
+  }
+
+  if (contexts.some((context) => context.kind === 'ambiguous')) return { kind: 'ambiguous' };
+  const exactContexts = contexts.filter((context): context is Extract<CollectionFilterContext, { kind: 'exact' }> => context.kind === 'exact');
+  const names = new Set(exactContexts.map((context) => context.name));
+  if (names.size > 1) return { kind: 'ambiguous' };
+  return exactContexts[0] ?? { kind: 'none' };
+}
 
 /**
  * SmartScopes: server-backed, rule-based dynamic datasets.
@@ -43,6 +82,7 @@ export class SmartScopeService {
     private readonly queryBuilder: BookQueryBuilder,
     private readonly libraryService: LibraryService,
     private readonly bookService: BookService,
+    private readonly collectionService: CollectionService,
   ) {}
 
   private async getSmartScopeOrThrow(id: number): Promise<SmartScope> {
@@ -229,8 +269,16 @@ export class SmartScopeService {
     const { where, effectiveQuery } = prepared;
 
     try {
+      let defaultCollectionId: number | undefined;
+      if (hasCollectionScopedSort(effectiveQuery.sort) && effectiveQuery.filter) {
+        const collectionContext = resolveCollectionFilterContext(effectiveQuery.filter);
+        if (collectionContext.kind === 'exact') {
+          defaultCollectionId = await this.collectionService.findIdByNameForUser(collectionContext.name, user);
+        }
+      }
       const result = await this.bookService.executeBooksQuery(user.id, where, effectiveQuery, {
         seriesSelectionFilter: query.filter,
+        ...(defaultCollectionId !== undefined ? { defaultCollectionId } : {}),
       });
       const durationMs = Date.now() - start;
       if (durationMs >= 500) {

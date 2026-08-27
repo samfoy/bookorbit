@@ -14,8 +14,10 @@ describe('CollectionModule', () => {
   it('registers collection controller and providers', () => {
     const controllers = Reflect.getMetadata(MODULE_METADATA.CONTROLLERS, CollectionModule);
     const providers = Reflect.getMetadata(MODULE_METADATA.PROVIDERS, CollectionModule) as Array<unknown>;
+    const exports = Reflect.getMetadata(MODULE_METADATA.EXPORTS, CollectionModule) as Array<unknown>;
 
     expect(controllers).toEqual([CollectionController]);
     expect(providers).toEqual(expect.arrayContaining([CollectionService, CollectionRepository]));
+    expect(exports).toEqual([CollectionService]);
   });
 });

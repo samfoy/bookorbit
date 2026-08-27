@@ -90,6 +90,11 @@ export class CollectionService {
     return this.findCollectionForUserOrThrow(id, user);
   }
 
+  async findIdByNameForUser(name: string, user: RequestUser): Promise<number | undefined> {
+    const [collection] = await this.collectionRepo.findIdByUserAndName(user.id, name);
+    return collection?.id;
+  }
+
   async create(dto: CreateCollectionDto, user: RequestUser) {
     const icon = normalizeIconValue(dto.icon);
     if (!icon) {

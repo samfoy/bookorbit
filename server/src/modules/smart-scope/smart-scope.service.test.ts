@@ -72,6 +72,9 @@ function makeService() {
     executeBookIdsQuery: vi.fn(),
     executeJumpBucketsQuery: vi.fn(),
   };
+  const collectionService = {
+    findIdByNameForUser: vi.fn(),
+  };
 
   const service = new SmartScopeService(
     smartScopeRepo as never,
@@ -79,8 +82,9 @@ function makeService() {
     queryBuilder as never,
     libraryService as never,
     bookService as never,
+    collectionService as never,
   );
-  return { service, smartScopeRepo, bookReadService, queryBuilder, libraryService, bookService };
+  return { service, smartScopeRepo, bookReadService, queryBuilder, libraryService, bookService, collectionService };
 }
 
 describe('SmartScopeService', () => {
@@ -870,6 +874,93 @@ describe('SmartScopeService', () => {
         },
         { seriesSelectionFilter: requestFilter },
       );
+    });
+
+    it('passes collection context for collectionOrder when the effective filter selects one owned collection', async () => {
+      const { service, smartScopeRepo, libraryService, queryBuilder, bookService, collectionService } = makeService();
+      const collectionFilter = {
+        type: 'group' as const,
+        join: 'AND' as const,
+        rules: [{ type: 'rule' as const, field: 'collection' as const, operator: 'includesAny' as const, value: ['Favorites'] }],
+      };
+      smartScopeRepo.findById.mockResolvedValue([
+        makeSmartScope({
+          filter: collectionFilter,
+          defaultSort: [{ field: 'collectionOrder', dir: 'asc' }],
+        }),
+      ]);
+      libraryService.findAccessibleLibraryIds.mockResolvedValue([9]);
+      queryBuilder.buildWhere.mockReturnValue('collection-where');
+      collectionService.findIdByNameForUser.mockResolvedValue(42);
+      bookService.executeBooksQuery.mockResolvedValue({ items: [], total: 0, page: 0, size: 50 });
+
+      await service.queryBooks(5, makeUser({ id: 12 }), {
+        sort: [],
+        pagination: { page: 0, size: 50 },
+      });
+
+      expect(collectionService.findIdByNameForUser).toHaveBeenCalledWith('Favorites', expect.objectContaining({ id: 12 }));
+      expect(bookService.executeBooksQuery).toHaveBeenCalledWith(
+        12,
+        'collection-where',
+        expect.objectContaining({ sort: [{ field: 'collectionOrder', dir: 'asc' }] }),
+        { seriesSelectionFilter: undefined, defaultCollectionId: 42 },
+      );
+    });
+
+    it('leaves collectionOrder rejected when the effective filter does not select one collection', async () => {
+      const { service, smartScopeRepo, libraryService, queryBuilder, bookService, collectionService } = makeService();
+      smartScopeRepo.findById.mockResolvedValue([
+        makeSmartScope({
+          filter: {
+            type: 'group',
+            join: 'AND',
+            rules: [{ type: 'rule', field: 'collection', operator: 'includesAny', value: ['Favorites', 'Later'] }],
+          },
+          defaultSort: [{ field: 'collectionOrder', dir: 'asc' }],
+        }),
+      ]);
+      libraryService.findAccessibleLibraryIds.mockResolvedValue([9]);
+      queryBuilder.buildWhere.mockReturnValue('ambiguous-where');
+      bookService.executeBooksQuery.mockRejectedValue(new BadRequestException('Sort field collectionOrder requires collection context'));
+
+      await expect(
+        service.queryBooks(5, makeUser({ id: 12 }), {
+          sort: [],
+          pagination: { page: 0, size: 50 },
+        }),
+      ).rejects.toThrow('requires collection context');
+
+      expect(collectionService.findIdByNameForUser).not.toHaveBeenCalled();
+      expect(bookService.executeBooksQuery).toHaveBeenCalledWith(12, 'ambiguous-where', expect.anything(), { seriesSelectionFilter: undefined });
+    });
+
+    it('does not supply collection context when the named collection is inaccessible to the current user', async () => {
+      const { service, smartScopeRepo, libraryService, queryBuilder, bookService, collectionService } = makeService();
+      smartScopeRepo.findById.mockResolvedValue([
+        makeSmartScope({
+          filter: {
+            type: 'group',
+            join: 'AND',
+            rules: [{ type: 'rule', field: 'collection', operator: 'includesAny', value: ['Foreign collection'] }],
+          },
+          defaultSort: [{ field: 'collectionOrder', dir: 'asc' }],
+        }),
+      ]);
+      libraryService.findAccessibleLibraryIds.mockResolvedValue([9]);
+      queryBuilder.buildWhere.mockReturnValue('foreign-where');
+      collectionService.findIdByNameForUser.mockResolvedValue(undefined);
+      bookService.executeBooksQuery.mockRejectedValue(new BadRequestException('Sort field collectionOrder requires collection context'));
+
+      await expect(
+        service.queryBooks(5, makeUser({ id: 12 }), {
+          sort: [],
+          pagination: { page: 0, size: 50 },
+        }),
+      ).rejects.toThrow('requires collection context');
+
+      expect(collectionService.findIdByNameForUser).toHaveBeenCalledWith('Foreign collection', expect.objectContaining({ id: 12 }));
+      expect(bookService.executeBooksQuery).toHaveBeenCalledWith(12, 'foreign-where', expect.anything(), { seriesSelectionFilter: undefined });
     });
 
     it('keeps a saved series rule out of collapse eligibility while retaining it in the books query', async () => {

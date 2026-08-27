@@ -52,6 +52,14 @@ export class CollectionRepository {
       .orderBy(collections.displayOrder, collections.name);
   }
 
+  findIdByUserAndName(userId: number, name: string) {
+    return this.db
+      .select({ id: collections.id })
+      .from(collections)
+      .where(and(eq(collections.userId, userId), eq(collections.name, name)))
+      .limit(1);
+  }
+
   findById(id: number) {
     return this.db
       .select(collectionFields)
