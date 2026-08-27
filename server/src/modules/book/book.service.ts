@@ -1169,9 +1169,17 @@ export class BookService {
     return result;
   }
 
-  async executeBookIdsQuery(userId: number, where: SQL | undefined, query: BookQuery): Promise<number[]> {
+  async executeBookIdsQuery(
+    userId: number,
+    where: SQL | undefined,
+    query: BookQuery,
+    options?: Pick<BookQueryExecutionOptions, 'defaultCollectionId'>,
+  ): Promise<number[]> {
     const customFieldTypes = await this.resolveCustomSortFieldTypes(query.sort);
-    const orderBy = this.queryBuilder.buildOrderBy(query.sort, userId, customFieldTypes);
+    const orderBy =
+      options?.defaultCollectionId === undefined
+        ? this.queryBuilder.buildOrderBy(query.sort, userId, customFieldTypes)
+        : this.queryBuilder.buildOrderBy(query.sort, userId, customFieldTypes, options);
     return this.bookRepo.findCardIds({
       where,
       orderBy,
@@ -1200,7 +1208,7 @@ export class BookService {
     where: SQL | undefined,
     query: JumpBucketsQuery,
     timeZone = 'UTC',
-    collapseOptions?: SeriesCollapseQueryOptions,
+    collapseOptions?: BookQueryExecutionOptions,
   ): Promise<JumpBucketsResponse> {
     const event = 'book.jump_buckets';
     const strategy = jumpRailStrategyForSort(query.sort);
@@ -1239,10 +1247,20 @@ export class BookService {
         // never applies the full sort, which is why this only matters here.
         const customFieldTypes = await this.resolveCustomSortFieldTypes(query.sort);
         response = shouldCollapse
-          ? await this.bookRepo.findJumpBucketsCollapsed({ ...discreteOpts, sort: query.sort, customFieldTypes })
+          ? await this.bookRepo.findJumpBucketsCollapsed({
+              ...discreteOpts,
+              sort: query.sort,
+              customFieldTypes,
+              defaultCollectionId: collapseOptions?.defaultCollectionId,
+            })
           : await this.bookRepo.findJumpBuckets({
               ...discreteOpts,
-              orderBy: this.queryBuilder.buildOrderBy(query.sort, userId, customFieldTypes),
+              orderBy:
+                collapseOptions?.defaultCollectionId === undefined
+                  ? this.queryBuilder.buildOrderBy(query.sort, userId, customFieldTypes)
+                  : this.queryBuilder.buildOrderBy(query.sort, userId, customFieldTypes, {
+                      defaultCollectionId: collapseOptions.defaultCollectionId,
+                    }),
             });
       }
       this.logger.log(

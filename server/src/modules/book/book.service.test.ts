@@ -107,6 +107,7 @@ function makeMetadataFetchDiagnostics(overrides: Partial<MetadataFetchDiagnostic
 function makeService(overrides: { bookMetadataLockService?: unknown } = {}) {
   const bookRepo = {
     findCards: vi.fn(),
+    findCardIds: vi.fn(),
     countWhere: vi.fn(),
     findPatternMetadataByBookIds: vi.fn(),
     findLibraryIdsByBookIds: vi.fn(),
@@ -2782,6 +2783,46 @@ describe('BookService', () => {
       ).rejects.toBeInstanceOf(BadRequestException);
       expect(bookRepo.findJumpBuckets).not.toHaveBeenCalled();
       expect(bookRepo.findJumpBucketsCollapsed).not.toHaveBeenCalled();
+    });
+
+    it('executeBookIdsQuery forwards collection context to the sort builder', async () => {
+      const { service, queryBuilder, bookRepo } = makeService();
+      queryBuilder.buildOrderBy.mockReturnValue(['ORDER'] as never);
+      bookRepo.findCardIds.mockResolvedValue([4, 2]);
+
+      await expect(
+        service.executeBookIdsQuery(
+          12,
+          'WHERE' as never,
+          { sort: [{ field: 'collectionOrder', dir: 'asc' }], pagination: { page: 0, size: 20 } },
+          { defaultCollectionId: 42 },
+        ),
+      ).resolves.toEqual([4, 2]);
+
+      expect(queryBuilder.buildOrderBy).toHaveBeenCalledWith([{ field: 'collectionOrder', dir: 'asc' }], 12, undefined, { defaultCollectionId: 42 });
+    });
+
+    it('executeJumpBucketsQuery forwards collection context for flat secondary ordering', async () => {
+      const { service, queryBuilder, bookRepo } = makeService();
+      queryBuilder.buildOrderBy.mockReturnValue(['ORDER'] as never);
+      bookRepo.findJumpBuckets.mockResolvedValue({ buckets: [], total: 0, kind: 'letter', granularity: null });
+
+      await service.executeJumpBucketsQuery(
+        12,
+        'WHERE' as never,
+        {
+          sort: [
+            { field: 'title', dir: 'asc' },
+            { field: 'collectionOrder', dir: 'asc' },
+          ],
+          pagination: { page: 0, size: 50 },
+          maxBuckets: 24,
+        },
+        'UTC',
+        { defaultCollectionId: 42 },
+      );
+
+      expect(queryBuilder.buildOrderBy).toHaveBeenCalledWith(expect.anything(), 12, undefined, { defaultCollectionId: 42 });
     });
 
     it('executeJumpBucketsQuery routes letter, category, and temporal sorts to their bounded query paths', async () => {

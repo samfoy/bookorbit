@@ -1158,11 +1158,24 @@ export class BookRepository {
     userId: number;
     maxBuckets: number;
     customFieldTypes?: CustomMetadataFieldTypeMap;
+    defaultCollectionId?: number;
   }): Promise<JumpBucketsResponse> {
+    if (opts.defaultCollectionId !== undefined && (!Number.isSafeInteger(opts.defaultCollectionId) || opts.defaultCollectionId <= 0)) {
+      throw new BadRequestException('Invalid default collection id');
+    }
     const source = collapsedDiscreteSourceParts(opts.field, opts.userId);
     if (!source) return { buckets: [], total: 0, kind: opts.kind, granularity: null };
     const whereFragment = this.visibleWhere(opts.where);
     const orderBy = BookQueryBuilder.buildCollapseOrderBy(opts.sort, opts.userId, opts.customFieldTypes);
+    const collectionPosition =
+      opts.defaultCollectionId === undefined
+        ? sql`NULL::bigint`
+        : sql`(
+            SELECT ${collectionBooks.position}
+            FROM ${collectionBooks}
+            WHERE ${collectionBooks.collectionId} = ${opts.defaultCollectionId}
+              AND ${collectionBooks.bookId} = ${books.id}
+          )`;
     const bucketExpr = opts.kind === 'letter' ? letterJumpBucketExpr(source.value) : sql`coalesce((${source.value})::text, '__unknown__')`;
     const isUnknownExpr = opts.kind === 'category' ? sql`${source.value} IS NULL` : sql`false`;
     const result = await this.db.execute<DiscreteJumpBucketRawRow>(
@@ -1185,6 +1198,7 @@ export class BookRepository {
           book_metadata.published_year,
           book_metadata.publisher,
           book_metadata.page_count,
+          ${collectionPosition} AS collection_position,
           NULLIF(lower(btrim(book_metadata.series_name)), '') AS norm_series
           ${source.baseExtraSelect}
         FROM books
@@ -1196,7 +1210,8 @@ export class BookRepository {
         SELECT
           base.series_id,
           base.library_id,
-          MAX(base.added_at) AS latest_added_at
+          MAX(base.added_at) AS latest_added_at,
+          MIN(base.collection_position) AS first_collection_position
         FROM base_rows base
         WHERE base.series_id IS NOT NULL
         GROUP BY base.series_id, base.library_id
@@ -1214,7 +1229,8 @@ export class BookRepository {
           ubr.rating,
           base.primary_author_sort_name AS author_sort_name,
           COALESCE(base.norm_series, lower(base.title)) AS sort_title,
-          COALESCE(sl.latest_added_at, base.added_at) AS sort_added_at
+          COALESCE(sl.latest_added_at, base.added_at) AS sort_added_at,
+          COALESCE(sl.first_collection_position, base.collection_position) AS sort_collection_position
           ${source.representativeExtraSelect}
         FROM base_rows base
         LEFT JOIN user_book_ratings ubr ON ubr.book_id = base.id AND ubr.user_id = ${opts.userId}

@@ -605,6 +605,31 @@ describe('SmartScopeService', () => {
     expect(bookService.executeBooksQuery).not.toHaveBeenCalled();
   });
 
+  it('executeSmartScopeBookIds passes collection context for collectionOrder', async () => {
+    const { service, smartScopeRepo, libraryService, queryBuilder, bookService, collectionService } = makeService();
+    const collectionFilter = {
+      type: 'group' as const,
+      join: 'AND' as const,
+      rules: [{ type: 'rule' as const, field: 'collection' as const, operator: 'includesAny' as const, value: ['Core Classics'] }],
+    };
+    smartScopeRepo.findById.mockResolvedValue([
+      makeSmartScope({ filter: collectionFilter, defaultSort: [{ field: 'collectionOrder', dir: 'asc' }] }),
+    ]);
+    libraryService.findAccessibleLibraryIds.mockResolvedValue([9]);
+    queryBuilder.buildWhere.mockReturnValue('collection-where');
+    collectionService.findIdByNameForUser.mockResolvedValue(42);
+    bookService.executeBookIdsQuery.mockResolvedValue([7, 3]);
+
+    await expect(service.executeSmartScopeBookIds(5, makeUser({ id: 12 }), 20)).resolves.toEqual([7, 3]);
+
+    expect(bookService.executeBookIdsQuery).toHaveBeenCalledWith(
+      12,
+      'collection-where',
+      expect.objectContaining({ sort: [{ field: 'collectionOrder', dir: 'asc' }] }),
+      { defaultCollectionId: 42 },
+    );
+  });
+
   it('executeSmartScope seeds sort from the smartScope when the request does not override it', async () => {
     const { service, smartScopeRepo, libraryService, queryBuilder, bookService } = makeService();
     const smartScope = makeSmartScope({
@@ -736,6 +761,37 @@ describe('SmartScopeService', () => {
         { seriesSelectionFilter: undefined },
       );
       expect(result).toEqual({ buckets: [{ key: 'A', label: 'A', index: 0 }], total: 3, kind: 'letter', granularity: null });
+    });
+
+    it('passes collection context when collectionOrder is a secondary jump-bucket sort', async () => {
+      const { service, smartScopeRepo, libraryService, queryBuilder, bookService, collectionService } = makeService();
+      smartScopeRepo.findById.mockResolvedValue([
+        makeSmartScope({
+          filter: {
+            type: 'group',
+            join: 'AND',
+            rules: [{ type: 'rule', field: 'collection', operator: 'includesAny', value: ['Core Classics'] }],
+          },
+        }),
+      ]);
+      libraryService.findAccessibleLibraryIds.mockResolvedValue([9]);
+      queryBuilder.buildWhere.mockReturnValue('collection-where');
+      collectionService.findIdByNameForUser.mockResolvedValue(42);
+      bookService.executeJumpBucketsQuery.mockResolvedValue({ buckets: [], total: 0, kind: 'letter', granularity: null });
+
+      await service.queryJumpBuckets(5, makeUser({ id: 12 }), {
+        sort: [
+          { field: 'title', dir: 'asc' },
+          { field: 'collectionOrder', dir: 'asc' },
+        ],
+        pagination: { page: 0, size: 50 },
+        maxBuckets: 24,
+      });
+
+      expect(bookService.executeJumpBucketsQuery).toHaveBeenCalledWith(12, 'collection-where', expect.anything(), 'UTC', {
+        seriesSelectionFilter: undefined,
+        defaultCollectionId: 42,
+      });
     });
 
     it('keeps a saved series rule out of collapse eligibility while retaining it in the jump-bucket query', async () => {
@@ -906,6 +962,42 @@ describe('SmartScopeService', () => {
         expect.objectContaining({ sort: [{ field: 'collectionOrder', dir: 'asc' }] }),
         { seriesSelectionFilter: undefined, defaultCollectionId: 42 },
       );
+    });
+
+    it('uses an exact AND constraint even when a nested sibling is broader', async () => {
+      const { service, smartScopeRepo, libraryService, queryBuilder, bookService, collectionService } = makeService();
+      smartScopeRepo.findById.mockResolvedValue([
+        makeSmartScope({
+          filter: {
+            type: 'group',
+            join: 'AND',
+            rules: [
+              { type: 'rule', field: 'collection', operator: 'includesAny', value: ['Favorites'] },
+              {
+                type: 'group',
+                join: 'OR',
+                rules: [
+                  { type: 'rule', field: 'collection', operator: 'includesAny', value: ['Favorites'] },
+                  { type: 'rule', field: 'title', operator: 'contains', value: 'classic' },
+                ],
+              },
+            ],
+          },
+          defaultSort: [{ field: 'collectionOrder', dir: 'asc' }],
+        }),
+      ]);
+      libraryService.findAccessibleLibraryIds.mockResolvedValue([9]);
+      queryBuilder.buildWhere.mockReturnValue('nested-where');
+      collectionService.findIdByNameForUser.mockResolvedValue(42);
+      bookService.executeBooksQuery.mockResolvedValue({ items: [], total: 0, page: 0, size: 50 });
+
+      await service.queryBooks(5, makeUser({ id: 12 }), { sort: [], pagination: { page: 0, size: 50 } });
+
+      expect(collectionService.findIdByNameForUser).toHaveBeenCalledWith('Favorites', expect.objectContaining({ id: 12 }));
+      expect(bookService.executeBooksQuery).toHaveBeenCalledWith(12, 'nested-where', expect.anything(), {
+        seriesSelectionFilter: undefined,
+        defaultCollectionId: 42,
+      });
     });
 
     it('leaves collectionOrder rejected when the effective filter does not select one collection', async () => {

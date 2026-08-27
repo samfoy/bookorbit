@@ -49,11 +49,11 @@ function resolveCollectionFilterContext(node: Rule | GroupRule): CollectionFilte
     return { kind: 'ambiguous' };
   }
 
-  if (contexts.some((context) => context.kind === 'ambiguous')) return { kind: 'ambiguous' };
   const exactContexts = contexts.filter((context): context is Extract<CollectionFilterContext, { kind: 'exact' }> => context.kind === 'exact');
   const names = new Set(exactContexts.map((context) => context.name));
   if (names.size > 1) return { kind: 'ambiguous' };
-  return exactContexts[0] ?? { kind: 'none' };
+  if (exactContexts[0]) return exactContexts[0];
+  return contexts.some((context) => context.kind === 'ambiguous') ? { kind: 'ambiguous' } : { kind: 'none' };
 }
 
 /**
@@ -253,7 +253,10 @@ export class SmartScopeService {
     const query: BookQuery = { sort: [], pagination: { page: 0, size } };
     const prepared = await this.prepareBooksQuery(id, user, query);
     if (!prepared) return [];
-    return this.bookService.executeBookIdsQuery(user.id, prepared.where, prepared.effectiveQuery);
+    const defaultCollectionId = await this.resolveDefaultCollectionId(prepared.effectiveQuery, user);
+    return defaultCollectionId === undefined
+      ? this.bookService.executeBookIdsQuery(user.id, prepared.where, prepared.effectiveQuery)
+      : this.bookService.executeBookIdsQuery(user.id, prepared.where, prepared.effectiveQuery, { defaultCollectionId });
   }
 
   async queryBooks(id: number, user: RequestUser, query: BookQuery): Promise<BooksPage> {
@@ -269,13 +272,7 @@ export class SmartScopeService {
     const { where, effectiveQuery } = prepared;
 
     try {
-      let defaultCollectionId: number | undefined;
-      if (hasCollectionScopedSort(effectiveQuery.sort) && effectiveQuery.filter) {
-        const collectionContext = resolveCollectionFilterContext(effectiveQuery.filter);
-        if (collectionContext.kind === 'exact') {
-          defaultCollectionId = await this.collectionService.findIdByNameForUser(collectionContext.name, user);
-        }
-      }
+      const defaultCollectionId = await this.resolveDefaultCollectionId(effectiveQuery, user);
       const result = await this.bookService.executeBooksQuery(user.id, where, effectiveQuery, {
         seriesSelectionFilter: query.filter,
         ...(defaultCollectionId !== undefined ? { defaultCollectionId } : {}),
@@ -304,9 +301,18 @@ export class SmartScopeService {
     // Eligibility is validated by the book service against effectiveQuery.sort,
     // i.e. after the scope's defaultSort has been resolved.
     const timeZone = resolveTimeZone((user.settings as { timezone?: unknown } | undefined)?.timezone, 'UTC');
+    const defaultCollectionId = await this.resolveDefaultCollectionId(prepared.effectiveQuery, user);
     return this.bookService.executeJumpBucketsQuery(user.id, prepared.where, prepared.effectiveQuery, timeZone, {
       seriesSelectionFilter: query.filter,
+      ...(defaultCollectionId !== undefined ? { defaultCollectionId } : {}),
     });
+  }
+
+  private async resolveDefaultCollectionId(query: BookQuery, user: RequestUser): Promise<number | undefined> {
+    if (!hasCollectionScopedSort(query.sort) || !query.filter) return undefined;
+    const collectionContext = resolveCollectionFilterContext(query.filter);
+    if (collectionContext.kind !== 'exact') return undefined;
+    return this.collectionService.findIdByNameForUser(collectionContext.name, user);
   }
 
   private async prepareBooksQuery<T extends BookQuery>(
