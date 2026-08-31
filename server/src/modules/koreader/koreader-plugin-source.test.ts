@@ -99,6 +99,8 @@ describe('KOReader plugin update source wiring', () => {
     expect(catalog).toContain('local BookOrbitStore = require("bookorbit_store")');
     expect(catalog).toContain('BookOrbitStore.install(BookOrbitCatalog)');
     expect(catalog).toContain('if self.nextStoreRequestGeneration then self:nextStoreRequestGeneration() end');
+    expect(catalog).toContain('function BookOrbitCatalog:onReturn()\n    self:nextStoreRequestGeneration()');
+    expect(catalog).toContain('function BookOrbitCatalog:goDashboard()\n    self:nextStoreRequestGeneration()');
     expect(menu).toContain('text = _("Book Store")');
     expect(menu).toContain('self:openBookStore()');
     expect(store).toContain('Capabilities.supports(self.client, "catalogStore")');

@@ -477,6 +477,7 @@ function BookOrbitCatalog:markStackDirty()
 end
 
 function BookOrbitCatalog:goDashboard()
+    self:nextStoreRequestGeneration()
     self.stack = {}
     self:updateReturnPath()
     self:loadDashboardRoot(true)
@@ -2433,6 +2434,7 @@ function BookOrbitCatalog:onClose()
 end
 
 function BookOrbitCatalog:onReturn()
+    self:nextStoreRequestGeneration()
     self:cancelThumbnailJobs()
     local previous = table.remove(self.stack)
     local dirty = false
