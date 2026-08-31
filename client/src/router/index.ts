@@ -144,6 +144,12 @@ export const routes: RouteRecordRaw[] = [
         meta: { title: () => t('titles.dashboard') },
       },
       {
+        path: '/discover',
+        name: 'discover',
+        component: () => import('@/features/discovery/views/BookDiscoveryView.vue'),
+        meta: { title: () => t('titles.discover') },
+      },
+      {
         path: '/settings',
         component: () => import('@/views/SettingsView.vue'),
         children: [

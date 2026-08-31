@@ -37,6 +37,10 @@ export const storageConfig = registerAs('storage', () => {
   };
 });
 
+export const bookAcquisitionConfig = registerAs('bookAcquisition', () => ({
+  annasArchiveSecretKey: process.env.ANNAS_ARCHIVE_SECRET_KEY?.trim() || undefined,
+}));
+
 export const fileWriteConfig = registerAs('fileWrite', () => ({
   debounceMs: parsePositiveInteger(process.env.FILE_WRITE_DEBOUNCE_MS, 3_000),
   maxConcurrentWrites: parsePositiveInteger(process.env.FILE_WRITE_MAX_CONCURRENT_WRITES, 2),

@@ -5,7 +5,17 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
 
-import { appConfig, authConfig, dbConfig, emailConfig, fileWriteConfig, migrationConfig, oidcRuntimeConfig, storageConfig } from './config/config';
+import {
+  appConfig,
+  authConfig,
+  bookAcquisitionConfig,
+  dbConfig,
+  emailConfig,
+  fileWriteConfig,
+  migrationConfig,
+  oidcRuntimeConfig,
+  storageConfig,
+} from './config/config';
 import { validateEnv } from './config/env.validation';
 import { loggerConfig } from './common/logger.config';
 import { CommonModule } from './common/common.module';
@@ -76,6 +86,7 @@ import { AccountActivityModule } from './modules/account-activity/account-activi
 import { SharedReadingInsightsModule } from './modules/shared-reading-insights/shared-reading-insights.module';
 import { BookDuplicatesModule } from './modules/book-duplicates/book-duplicates.module';
 import { BookMoveModule } from './modules/book-move/book-move.module';
+import { BookDiscoveryModule } from './modules/book-discovery/book-discovery.module';
 
 @Module({
   imports: [
@@ -83,7 +94,7 @@ import { BookMoveModule } from './modules/book-move/book-move.module';
     ConfigModule.forRoot({
       isGlobal: true,
       validate: validateEnv,
-      load: [appConfig, dbConfig, authConfig, storageConfig, fileWriteConfig, emailConfig, migrationConfig, oidcRuntimeConfig],
+      load: [appConfig, dbConfig, authConfig, storageConfig, bookAcquisitionConfig, fileWriteConfig, emailConfig, migrationConfig, oidcRuntimeConfig],
     }),
     ScheduleModule.forRoot(),
     ThrottlerModule.forRoot({
@@ -158,6 +169,7 @@ import { BookMoveModule } from './modules/book-move/book-move.module';
     SharedReadingInsightsModule,
     BookDuplicatesModule,
     BookMoveModule,
+    BookDiscoveryModule,
     BrowseCountsModule,
   ],
   providers: [

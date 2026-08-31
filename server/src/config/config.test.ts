@@ -1,6 +1,16 @@
 import { resolve } from 'path';
 
-import { appConfig, authConfig, dbConfig, emailConfig, fileWriteConfig, migrationConfig, oidcRuntimeConfig, storageConfig } from './config';
+import {
+  appConfig,
+  authConfig,
+  bookAcquisitionConfig,
+  dbConfig,
+  emailConfig,
+  fileWriteConfig,
+  migrationConfig,
+  oidcRuntimeConfig,
+  storageConfig,
+} from './config';
 
 const ORIGINAL_ENV = process.env;
 
@@ -31,6 +41,7 @@ function resetEnv(): void {
   delete process.env.OIDC_JWKS_CACHE_TTL_SECS;
   delete process.env.OIDC_CLOCK_TOLERANCE_SECS;
   delete process.env.OIDC_TOKEN_EXCHANGE_TIMEOUT_MS;
+  delete process.env.ANNAS_ARCHIVE_SECRET_KEY;
 }
 
 describe('config', () => {
@@ -83,6 +94,13 @@ describe('config', () => {
   it('falls back to false when OIDC_ALLOW_LOCAL_ISSUERS is invalid', () => {
     process.env.OIDC_ALLOW_LOCAL_ISSUERS = 'maybe';
     expect(appConfig().oidcAllowLocalIssuers).toBe(false);
+  });
+
+  it("reads the optional Anna's Archive member key without exposing a default", () => {
+    expect(bookAcquisitionConfig().annasArchiveSecretKey).toBeUndefined();
+
+    process.env.ANNAS_ARCHIVE_SECRET_KEY = '  member-secret  ';
+    expect(bookAcquisitionConfig().annasArchiveSecretKey).toBe('member-secret');
   });
 
   it('uses defaults for database, auth, email, and migration config', () => {

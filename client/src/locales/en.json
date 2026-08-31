@@ -4829,6 +4829,7 @@
     },
     "sidebar": {
       "dashboard": "Dashboard",
+      "discover": "Discover",
       "dailyReading": "Daily Reading",
       "authors": "Authors",
       "series": "Series",
@@ -7403,8 +7404,101 @@
     "previousImage": "Previous image",
     "nextImage": "Next image"
   },
+  "discovery": {
+    "eyebrow": "Search beyond your shelves",
+    "title": "Find your next book",
+    "subtitle": "Search Hardcover and StoryGraph together, compare editions, and bring a verified EPUB into BookOrbit without leaving the app.",
+    "search": {
+      "label": "Search external book catalogs",
+      "placeholder": "Title, author, or ISBN",
+      "submit": "Search books",
+      "searching": "Searching",
+      "searchIn": "Search in"
+    },
+    "sources": {
+      "hardcover": "Hardcover",
+      "storygraph": "StoryGraph",
+      "statusLabel": "Catalog source status",
+      "results": "{count, plural, =0 {No matches} one {# match} other {# matches}}"
+    },
+    "card": {
+      "unknownAuthor": "Unknown author",
+      "coverAlt": "Cover of {title}",
+      "noCover": "No cover available",
+      "pages": "{count} pages",
+      "openSource": "Open on {source}",
+      "acquire": "Get book"
+    },
+    "acquire": {
+      "title": "Add to your library",
+      "description": "Choose where the verified EPUB should live and how BookOrbit should fetch it.",
+      "library": "Library",
+      "chooseLibrary": "Choose a library",
+      "folder": "Library folder",
+      "source": "Download source",
+      "unavailable": "Unavailable",
+      "verifiedTitle": "Verified before import",
+      "verifiedDescription": "BookOrbit checks EPUB integrity, embedded title and author, bundles, and series volumes before import. It also prepares CrossInk locations.",
+      "starting": "Starting",
+      "confirm": "Find and add EPUB",
+      "backgroundHint": "The download continues in the background. You can follow it from this page.",
+      "sources": {
+        "auto": "Automatic",
+        "autoDescription": "Uses Anna's Archive fast download when configured, then falls back to the verified LibGen flow.",
+        "libgen": "LibGen",
+        "annas_archive": "Anna's Archive"
+      }
+    },
+    "queue": {
+      "title": "Acquisition queue",
+      "description": "Downloads and imports continue in the background.",
+      "x3Ready": "CrossInk ready",
+      "cancel": "Cancel acquisition of {title}",
+      "status": {
+        "queued": "Waiting to start",
+        "downloading": "Finding and verifying an EPUB",
+        "optimizing": "Preparing CrossInk locations",
+        "importing": "Adding to BookOrbit",
+        "completed": "Ready in your library",
+        "failed": "Acquisition failed",
+        "cancelled": "Cancelled"
+      }
+    },
+    "results": {
+      "title": "Catalog results",
+      "count": "{count, plural, =0 {No books found} one {# book found} other {# books found}}"
+    },
+    "error": {
+      "title": "Search could not finish",
+      "retry": "Try again"
+    },
+    "empty": {
+      "title": "No matching books",
+      "description": "Try a shorter title, add the author's name, or switch catalog sources. One provider can still return results when the other is unavailable."
+    },
+    "intro": {
+      "catalogs": {
+        "title": "Two catalogs, one search",
+        "description": "Your existing Hardcover token and StoryGraph session stay with their current integrations. Results are merged when both catalogs find the same book."
+      },
+      "acquire": {
+        "title": "One step into BookOrbit",
+        "description": "Choose a library and BookOrbit handles the search, download, naming, metadata extraction, and import through its normal upload path."
+      },
+      "verify": {
+        "title": "Guarded against bad matches",
+        "description": "Wrong volumes, omnibus editions, corrupt archives, and mismatched embedded metadata are rejected before they can reach your shelves."
+      }
+    },
+    "toast": {
+      "started": "Started acquiring {title}",
+      "startFailed": "Could not start acquisition",
+      "cancelFailed": "Could not cancel acquisition"
+    }
+  },
   "titles": {
     "dashboard": "Dashboard",
+    "discover": "Discover Books",
     "libraries": "Libraries",
     "opds": "OPDS",
     "koboSync": "Kobo Sync",

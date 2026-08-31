@@ -60,6 +60,10 @@ const envSchema = z.object({
   APP_URL: z.string().url().default('http://localhost:5173'),
   TRUST_PROXY: z.string().optional(),
   EMAIL_ENCRYPTION_KEY: z.string().optional(),
+  ANNAS_ARCHIVE_SECRET_KEY: z
+    .string()
+    .transform((val) => val.trim())
+    .optional(),
   MIGRATION_ENCRYPTION_KEY: z.string().optional(),
   MIGRATION_IMPORT_ROOT: z
     .string()

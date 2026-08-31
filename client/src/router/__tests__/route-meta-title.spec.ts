@@ -28,6 +28,12 @@ function findRoute(records: RouteRecordRaw[], name: string): RouteRecordRaw | un
 }
 
 describe('router title metadata', () => {
+  it('registers the discovery page as a titled app route', () => {
+    const route = findRoute(routes, 'discover')
+    expect(route?.path).toBe('/discover')
+    expect(route?.meta?.title).toBeTypeOf('function')
+  })
+
   it('requires meta.title on all named non-redirect routes', () => {
     const missing: MissingRoute[] = []
 

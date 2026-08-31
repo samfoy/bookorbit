@@ -31,10 +31,10 @@ describe('sidebar nav registry', () => {
     expect(allowedIds(makeContext())).toEqual(['dashboard', 'daily-reading', 'authors', 'series', 'annotations'])
   })
 
-  it('places Dashboard, Book Dock and Tools in the primary zone, above the entity sections', () => {
+  it('places Dashboard, Discover, Book Dock and Tools in the primary zone, above the entity sections', () => {
     const primary = SIDEBAR_NAV_REGISTRY.filter((candidate) => candidate.zone === 'primary').map((candidate) => candidate.id)
 
-    expect(primary).toEqual(['dashboard', 'daily-reading', 'book-dock', 'tools'])
+    expect(primary).toEqual(['dashboard', 'discover', 'daily-reading', 'book-dock', 'tools'])
   })
 
   it('leaves Statistics and Achievements to the header', () => {
@@ -42,6 +42,11 @@ describe('sidebar nav registry', () => {
 
     expect(ids).not.toContain('statistics')
     expect(ids).not.toContain('achievements')
+  })
+
+  it('shows Discover once the user can upload to a library', () => {
+    expect(allowedIds(makeContext({ permissions: ['library_upload'] }))).toContain('discover')
+    expect(entry('discover').isActive(makeRoute('discover'))).toBe(true)
   })
 
   it('shows Book Dock once the user holds book_dock_access', () => {
