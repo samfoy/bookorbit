@@ -594,6 +594,49 @@ function BookOrbitApi:catalogBook(book_id)
     return self:request("GET", self:query("/koreader/plugin/catalog/books/" .. tostring(book_id), { deviceId = self.device_id }))
 end
 
+-- Native Store endpoints. Provider credentials and acquisition mechanics stay
+-- on the BookOrbit server; the device authenticates only with its KOReader key.
+function BookOrbitApi:catalogStoreHome(hide_read)
+    return self:request("GET", self:query("/koreader/plugin/catalog/store/home", {
+        hideRead = hide_read ~= false,
+    }))
+end
+
+function BookOrbitApi:catalogStoreBrowse(params)
+    return self:request("GET", self:query("/koreader/plugin/catalog/store/browse", params))
+end
+
+function BookOrbitApi:catalogStoreSearch(query, sources)
+    return self:request("GET", self:query("/koreader/plugin/catalog/store/search", {
+        query = query,
+        sources = sources,
+    }))
+end
+
+function BookOrbitApi:catalogStoreConfig()
+    return self:request("GET", "/koreader/plugin/catalog/store/config")
+end
+
+function BookOrbitApi:catalogStoreAcquisitions()
+    return self:request("GET", "/koreader/plugin/catalog/store/acquisitions")
+end
+
+function BookOrbitApi:catalogStoreStartAcquisition(request)
+    return self:request("POST", "/koreader/plugin/catalog/store/acquisitions", request)
+end
+
+function BookOrbitApi:catalogStoreAcquisition(job_id)
+    return self:request("GET", "/koreader/plugin/catalog/store/acquisitions/" .. util.urlEncode(tostring(job_id)))
+end
+
+function BookOrbitApi:catalogStoreCancelAcquisition(job_id)
+    return self:request("DELETE", "/koreader/plugin/catalog/store/acquisitions/" .. util.urlEncode(tostring(job_id)))
+end
+
+function BookOrbitApi:downloadCatalogStoreCover(url, local_path, opts)
+    return self:download(self:query("/koreader/plugin/catalog/store/cover", { url = url }), local_path, opts)
+end
+
 function BookOrbitApi:downloadCatalogFile(file_id, local_path, opts)
     return self:download("/koreader/plugin/catalog/files/" .. tostring(file_id) .. "/download", local_path, opts)
 end

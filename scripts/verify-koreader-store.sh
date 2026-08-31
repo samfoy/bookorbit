@@ -35,17 +35,20 @@ PY
 
 pnpm --filter @bookorbit/types build
 NODE_OPTIONS=--max-old-space-size=3072 server/node_modules/.bin/tsc --noEmit -p server/tsconfig.build.json
-server/node_modules/.bin/vitest run \
-  server/src/modules/book-discovery \
-  server/src/modules/hardcover/hardcover-catalog.service.test.ts \
-  server/src/modules/hardcover/hardcover-catalog-browse.service.test.ts \
-  server/src/modules/hardcover/hardcover-read-books.service.test.ts \
-  server/src/modules/storygraph/storygraph-catalog.service.test.ts \
-  server/src/modules/koreader/koreader-catalog.controller.test.ts \
-  server/src/modules/koreader/koreader-catalog.service.test.ts \
-  server/src/modules/koreader/koreader-plugin-source.test.ts \
-  server/src/modules/koreader/koreader-package.service.test.ts \
-  --maxWorkers=2
+(
+  cd server
+  ./node_modules/.bin/vitest run \
+    src/modules/book-discovery \
+    src/modules/hardcover/hardcover-catalog.service.test.ts \
+    src/modules/hardcover/hardcover-catalog-browse.service.test.ts \
+    src/modules/hardcover/hardcover-read-books.service.test.ts \
+    src/modules/storygraph/storygraph-catalog.service.test.ts \
+    src/modules/koreader/koreader-catalog.controller.test.ts \
+    src/modules/koreader/koreader-catalog.service.test.ts \
+    src/modules/koreader/koreader-plugin-source.test.ts \
+    src/modules/koreader/koreader-package.service.test.ts \
+    --maxWorkers=2
+)
 
 server/node_modules/.bin/eslint \
   server/src/modules/book-discovery \

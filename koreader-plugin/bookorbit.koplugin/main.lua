@@ -48,7 +48,7 @@ local BookOrbitProgressSync = require("bookorbit_progress_sync")
 local BookOrbitSweep = require("bookorbit_sweep")
 local BookOrbitUpdater = require("bookorbit_updater")
 
-local PLUGIN_VERSION = "1.5.0"
+local PLUGIN_VERSION = "1.6.0"
 
 local SYNC_STRATEGY = {
     PROMPT = 1,
@@ -1123,6 +1123,19 @@ function BookOrbit:browseCatalog(allow_offline)
             self:openCatalogBrowser(false)
         end)
     end
+end
+
+function BookOrbit:openBookStore()
+    if not self:isLoggedIn() then
+        promptLogin()
+        return
+    end
+    NetworkMgr:runWhenConnected(function()
+        self:openCatalogBrowser(false)
+        UIManager:nextTick(function()
+            if self.catalog_browser then self.catalog_browser:openBookStore() end
+        end)
+    end)
 end
 
 -- Manual sync triggers

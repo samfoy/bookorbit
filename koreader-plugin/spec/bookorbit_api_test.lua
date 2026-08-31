@@ -66,10 +66,14 @@ package.loaded["ltn12"] = {
 }
 
 local last_request_url
+local last_request_method
+local last_request_headers
 package.loaded["socket.http"] = {
     request = function(request)
         request_ran_in_subprocess = in_subprocess
         last_request_url = request.url
+        last_request_method = request.method
+        last_request_headers = request.headers
         if mock_http_body then
             request.sink(mock_http_body)
         end
@@ -170,6 +174,25 @@ client:catalogDashboardSection("up-next-in-series")
 assertEqual(last_request_url,
     "https://bookorbit.example.com/api/v1/koreader/plugin/catalog/dashboard/sections/up-next-in-series",
     "the dashboard-section endpoint is addressed by source type")
+
+client:catalogStoreHome(true)
+assertEqual(last_request_url,
+    "https://bookorbit.example.com/api/v1/koreader/plugin/catalog/store/home?hideRead=true",
+    "store home preserves the read filter")
+client:catalogStoreBrowse({ kind = "genre", value = "science-fiction", page = 2, pageSize = 12, hideRead = false })
+assertEqual(last_request_url,
+    "https://bookorbit.example.com/api/v1/koreader/plugin/catalog/store/browse?hideRead=false&kind=genre&page=2&pageSize=12&value=science-fiction",
+    "store browse uses bounded query parameters")
+client:catalogStoreSearch("Piranesi", "hardcover,storygraph")
+assertEqual(last_request_url,
+    "https://bookorbit.example.com/api/v1/koreader/plugin/catalog/store/search?query=Piranesi&sources=hardcover,storygraph",
+    "store search stays behind BookOrbit")
+client:catalogStoreStartAcquisition({ libraryId = 1, title = "Piranesi", authors = { "Susanna Clarke" }, source = "auto" })
+assertEqual(last_request_method, "POST", "store acquisition uses POST")
+assertEqual(last_request_url,
+    "https://bookorbit.example.com/api/v1/koreader/plugin/catalog/store/acquisitions",
+    "store acquisition uses the KOReader-authenticated facade")
+assertEqual(last_request_headers["x-auth-key"], "secret", "BookOrbit store calls carry KOReader auth")
 
 local wrapped = true
 local subprocess_calls = 0

@@ -2,7 +2,7 @@ import { readFile } from 'fs/promises';
 import { join } from 'path';
 import { describe, expect, it } from 'vitest';
 
-const pluginRoot = join(process.cwd(), '..', 'koreader-plugin', 'bookorbit.koplugin');
+const pluginRoot = join(process.cwd(), process.cwd().endsWith('/server') ? '..' : '.', 'koreader-plugin', 'bookorbit.koplugin');
 
 async function readPluginFile(name: string): Promise<string> {
   const source = await readFile(join(pluginRoot, name), 'utf8');
@@ -85,6 +85,28 @@ describe('KOReader plugin update source wiring', () => {
     expect(syncSettingsBlock).not.toContain('text = _("Sync current book now")');
     expect(syncSettingsBlock).not.toContain('text = _("Auto sync current book")');
     expect(syncSettingsBlock).not.toContain('text = _("Sync all books now")');
+  });
+
+  it('wires a capability-gated native store with real catalog and menu entry points', async () => {
+    const main = await readPluginFile('main.lua');
+    const catalog = await readPluginFile('bookorbit_catalog.lua');
+    const api = await readPluginFile('bookorbit_api.lua');
+    const menu = await readPluginFile('bookorbit_main_menu.lua');
+    const store = await readPluginFile('bookorbit_store.lua');
+
+    expect(main).toContain('local PLUGIN_VERSION = "1.6.0"');
+    expect(catalog).toContain('local BookOrbitStore = require("bookorbit_store")');
+    expect(catalog).toContain('BookOrbitStore.install(BookOrbitCatalog)');
+    expect(menu).toContain('text = _("Book Store")');
+    expect(menu).toContain('self:openBookStore()');
+    expect(store).toContain('Capabilities.supports(self.client, "catalogStore")');
+    expect(store).toContain('function Store:loadStoreHome');
+    expect(store).toContain('function Store:showStoreBook');
+    expect(store).toContain('function Store:startStoreAcquisition');
+    expect(store).toContain('function Store:resumeStoreAcquisitions');
+    expect(api).toContain('function BookOrbitApi:catalogStoreHome');
+    expect(api).toContain('function BookOrbitApi:catalogStoreSearch');
+    expect(api).toContain('function BookOrbitApi:catalogStoreStartAcquisition');
   });
 
   it('renders the canonical account reading streak on the device dashboard', async () => {

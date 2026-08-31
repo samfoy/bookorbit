@@ -31,6 +31,7 @@ function makeController() {
     startAcquisition: vi.fn().mockResolvedValue({ id: '379ad1d5-8115-4b61-90ff-9318e8a3ce9c', status: 'queued' }),
     getAcquisition: vi.fn().mockReturnValue({ id: '379ad1d5-8115-4b61-90ff-9318e8a3ce9c', status: 'queued' }),
     cancelAcquisition: vi.fn().mockReturnValue({ id: '379ad1d5-8115-4b61-90ff-9318e8a3ce9c', status: 'cancelled' }),
+    streamCover: vi.fn().mockResolvedValue(undefined),
   };
   return { controller: new KoreaderCatalogController(catalogService as never, storeService as never), catalogService, storeService };
 }
@@ -116,11 +117,14 @@ describe('KoreaderCatalogController', () => {
     await controller.storeBrowse(user, browseQuery);
     await controller.storeSearch(user, searchQuery);
     await controller.storeConfig(user);
+    const coverReply = { send: vi.fn() } as never;
+    await controller.storeCover({ url: 'https://example.com/cover.jpg' }, coverReply);
 
     expect(storeService.getHome).toHaveBeenCalledWith(user, homeQuery);
     expect(storeService.browse).toHaveBeenCalledWith(user, browseQuery);
     expect(storeService.search).toHaveBeenCalledWith(user, searchQuery);
     expect(storeService.getConfig).toHaveBeenCalledWith(user);
+    expect(storeService.streamCover).toHaveBeenCalledWith('https://example.com/cover.jpg', coverReply);
   });
 
   it('forwards the store acquisition lifecycle with the authenticated user', async () => {

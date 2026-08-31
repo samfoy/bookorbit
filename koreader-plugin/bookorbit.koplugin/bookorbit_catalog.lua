@@ -51,6 +51,7 @@ local CatalogDashboard = require("bookorbit_catalog_dashboard")
 local CatalogDetail = require("bookorbit_catalog_detail")
 local CatalogFocus = require("bookorbit_catalog_focus")
 local CatalogThumbnails = require("bookorbit_catalog_thumbnails")
+local BookOrbitStore = require("bookorbit_store")
 
 local Screen = Device.screen
 local DGENERIC_ICON_SIZE = G_defaults:readSetting("DGENERIC_ICON_SIZE")
@@ -246,6 +247,7 @@ CatalogDashboard.install(BookOrbitCatalog)
 CatalogDetail.install(BookOrbitCatalog)
 CatalogFocus.install(BookOrbitCatalog)
 CatalogThumbnails.install(BookOrbitCatalog)
+BookOrbitStore.install(BookOrbitCatalog)
 
 local Menu_recalculateDimen = Menu._recalculateDimen
 local Menu_updateItems = Menu.updateItems
@@ -325,7 +327,7 @@ function BookOrbitCatalog:downloadIconPath()
 end
 
 function BookOrbitCatalog:isBulkSelectionActive()
-    return self:bookMode() and self.bulk_selection_mode == true
+    return self:localBookMode() and self.bulk_selection_mode == true
 end
 
 function BookOrbitCatalog:titleBarSearchIcon()
@@ -421,7 +423,9 @@ end
 function BookOrbitCatalog:refreshCurrent()
     self.thumbnail_failures = {}
     local context = self.current_context or {}
-    if context.kind == "books" then
+    if self:storeMode() then
+        self:reloadStoreContext(context)
+    elseif context.kind == "books" then
         self:evictCachedCovers(context.books)
         local params = cloneParams(context.params or {})
         params.page = context.page or 1
@@ -747,6 +751,9 @@ function BookOrbitCatalog:rootItems()
         text = _("Not on device"),
         kind = "not-on-device",
     })
+    if self:storeSupported() == true then
+        table.insert(items, 1, { text = _("Book Store"), kind = "store-home-entry" })
+    end
 
     return items
 end
@@ -775,7 +782,7 @@ function BookOrbitCatalog:switchTo(title, item_table, context, push)
     end
     self:resetTitleBar(title, context.subtitle or "")
     self:switchItemTable(title, item_table, nil, nil, context.subtitle or "")
-    if context.kind == "books" then
+    if context.kind == "books" or context.kind == "store-books" then
         self:scheduleThumbnailDownloads(context.books or {})
     elseif context.kind == "detail" then
         self:scheduleThumbnailDownloads(self:detailThumbnailBooks(context.detail))
@@ -852,6 +859,9 @@ end
 function BookOrbitCatalog:emptyBooksText()
     local context = self.current_context or {}
     local params = context.params or {}
+    if context.kind == "store-books" and context.store_query then
+        return T(_("No store books match \"%1\"."), tostring(context.store_query))
+    end
     if params.q then
         return T(_("No books match \"%1\"."), tostring(params.q))
     end
@@ -1547,6 +1557,10 @@ end
 
 function BookOrbitCatalog:showBookActions()
     local context = self.current_context or {}
+    if self:storeMode() then
+        self:showStoreActions()
+        return
+    end
     local in_books = context.kind == "books"
     local in_section = context.kind == "section"
     local params = in_books and self:scopeParams(context.params or {}) or {}
@@ -1672,6 +1686,15 @@ function BookOrbitCatalog:showBookActions()
     if not self:dashboardMode() then
         table.insert(buttons, {
             {
+                text = _("Book Store"),
+                callback = function()
+                    UIManager:close(dialog)
+                    self:openBookStore()
+                end,
+            },
+        })
+        table.insert(buttons, {
+            {
                 text = _("Dashboard"),
                 callback = function()
                     UIManager:close(dialog)
@@ -1724,6 +1747,8 @@ function BookOrbitCatalog:onLeftButtonTap()
         self:showBulkSelectionActions()
     elseif self:detailMode() then
         self:goDashboard()
+    elseif self:storeMode() then
+        self:showStoreActions()
     elseif self:dashboardMode() and self.show_dashboard_menu then
         self.show_dashboard_menu(self)
     else
@@ -1749,7 +1774,9 @@ function BookOrbitCatalog:onSearchButtonTap()
     end
 
     local context = self.current_context or {}
-    if context.kind == "books" then
+    if self:storeMode() then
+        self:promptStoreSearch()
+    elseif context.kind == "books" then
         self:promptSearch(self:scopeParams(context.params or {}), context.title)
     else
         self:promptSearch({}, nil)
@@ -1772,7 +1799,16 @@ function BookOrbitCatalog:dashboardMode()
 end
 
 function BookOrbitCatalog:bookMode()
+    return self.current_context and (self.current_context.kind == "books" or self.current_context.kind == "store-books")
+end
+
+function BookOrbitCatalog:localBookMode()
     return self.current_context and self.current_context.kind == "books"
+end
+
+function BookOrbitCatalog:storeMode()
+    local kind = self.current_context and self.current_context.kind
+    return kind == "store-home" or kind == "store-books" or kind == "store-jobs"
 end
 
 function BookOrbitCatalog:detailMode()
@@ -2164,7 +2200,12 @@ function BookOrbitCatalog:updateListItems(select_number, no_recalculate_dimen)
 end
 
 function BookOrbitCatalog:onGotoPage(page)
-    if self:bookMode() then
+    if self.current_context and self.current_context.kind == "store-books" then
+        local context = self.current_context
+        if page < 1 or page > (context.page_count or 1) or page == context.page then return true end
+        self:loadStoreBrowse(context.store_kind, context.store_value, page, context.title, false)
+        return true
+    elseif self:bookMode() then
         local context = self.current_context
         if page < 1 or page > (context.page_count or 1) or page == context.page then
             return true
@@ -2298,7 +2339,22 @@ function BookOrbitCatalog:onLastPage()
 end
 
 function BookOrbitCatalog:onMenuSelect(item)
-    if item.kind == "section" then
+    if item.kind == "store-home-entry" then
+        self:openBookStore()
+    elseif item.kind == "store-search" then
+        self:promptStoreSearch()
+    elseif item.kind == "store-browse" then
+        self:loadStoreBrowse(item.store_kind, item.store_value, 1, item.text, true)
+    elseif item.kind == "store-book" then
+        self:showStoreBook(item.book)
+    elseif item.kind == "store-jobs" then
+        self:showStoreQueue()
+    elseif item.kind == "store-job" then
+        self:showStoreJob(item.job)
+    elseif item.kind == "store-toggle-read" then
+        self:persistSetting("store_hide_read", not self:storeHideRead())
+        self:loadStoreHome(false)
+    elseif item.kind == "section" then
         self:loadSection(item.section)
     elseif item.kind == "dashboard-book" then
         -- Continue-reading heroes resume the book directly when it is on the
@@ -2349,7 +2405,10 @@ function BookOrbitCatalog:onMenuSelect(item)
 end
 
 function BookOrbitCatalog:onMenuHoldSelect(item)
-    if item.kind == "book" or item.kind == "dashboard-book" then
+    if item.kind == "store-book" then
+        self:showStoreBook(item.book)
+        return true
+    elseif item.kind == "book" or item.kind == "dashboard-book" then
         self:showBookActionSheetForEntry(item)
         return true
     end

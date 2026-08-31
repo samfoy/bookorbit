@@ -2,7 +2,13 @@ import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { describe, expect, it } from 'vitest';
 
-import { KoreaderStoreBrowseDto, KoreaderStoreCreateAcquisitionDto, KoreaderStoreHomeDto, KoreaderStoreSearchDto } from './koreader-store.dto';
+import {
+  KoreaderStoreBrowseDto,
+  KoreaderStoreCoverDto,
+  KoreaderStoreCreateAcquisitionDto,
+  KoreaderStoreHomeDto,
+  KoreaderStoreSearchDto,
+} from './koreader-store.dto';
 
 describe('KOReader store DTOs', () => {
   it('defaults hideRead and transforms bounded browse pagination', async () => {
@@ -31,6 +37,14 @@ describe('KOReader store DTOs', () => {
     expect(await validate(valid)).toEqual([]);
     expect(valid).toMatchObject({ query: 'Piranesi', sources: ['hardcover', 'storygraph'] });
     expect((await validate(invalid)).map((error) => error.property)).toContain('sources');
+  });
+
+  it('accepts only HTTPS external cover URLs', async () => {
+    const secure = plainToInstance(KoreaderStoreCoverDto, { url: 'https://images.example.test/cover.jpg' });
+    const insecure = plainToInstance(KoreaderStoreCoverDto, { url: 'http://images.example.test/cover.jpg' });
+
+    expect(await validate(secure)).toEqual([]);
+    expect((await validate(insecure)).map((error) => error.property)).toContain('url');
   });
 
   it('rejects invalid browse values and acquisition identifiers', async () => {

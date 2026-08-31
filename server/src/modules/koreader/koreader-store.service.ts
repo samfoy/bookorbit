@@ -1,15 +1,20 @@
 import type { CreateBookAcquisitionRequest, KoreaderStoreConfigResponse } from '@bookorbit/types';
 import { Permission } from '@bookorbit/types';
-import { ForbiddenException, Injectable } from '@nestjs/common';
+import { BadGatewayException, ForbiddenException, Injectable, PayloadTooLargeException } from '@nestjs/common';
+import type { FastifyReply } from 'fastify';
 
 import type { RequestUser } from '../../common/types/request-user';
 import { BookAcquisitionService } from '../book-discovery/book-acquisition.service';
 import { BookDiscoveryService } from '../book-discovery/book-discovery.service';
+import { fetchWithSafeRedirects } from '../book-discovery/safe-remote-fetch.util';
 import type { BrowseExternalBooksDto } from '../book-discovery/dto/browse-external-books.dto';
 import type { BrowseHomeDto } from '../book-discovery/dto/browse-home.dto';
 import type { SearchExternalBooksDto } from '../book-discovery/dto/search-external-books.dto';
 import { HardcoverCatalogBrowseService } from '../hardcover/hardcover-catalog-browse.service';
 import { LibraryService } from '../library/library.service';
+
+const MAX_STORE_COVER_BYTES = 4 * 1024 * 1024;
+const STORE_COVER_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
 @Injectable()
 export class KoreaderStoreService {
@@ -36,6 +41,7 @@ export class KoreaderStoreService {
     const libraries = await this.libraries.findAll(user);
     const sources = this.acquisitions.getCapabilities().map(({ source, available, label, message }) => ({ source, available, label, message }));
     return {
+      canAcquire: this.hasUploadPermission(user),
       sources,
       libraries: libraries.map(({ id, name, folders }) => ({
         id,
@@ -65,9 +71,49 @@ export class KoreaderStoreService {
     return this.acquisitions.cancel(user.id, jobId);
   }
 
+  async streamCover(url: string, reply: FastifyReply): Promise<void> {
+    const response = await fetchWithSafeRedirects(url, { headers: { accept: 'image/jpeg,image/png,image/webp' } });
+    if (!response.ok) throw new BadGatewayException(`Remote cover returned HTTP ${response.status}`);
+    const contentType = response.headers.get('content-type')?.split(';', 1)[0]?.trim().toLowerCase();
+    if (!contentType || !STORE_COVER_TYPES.has(contentType)) {
+      await response.body?.cancel();
+      throw new BadGatewayException('Remote cover did not return a supported image');
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) throw new BadGatewayException('Remote cover response was empty');
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      size += value.byteLength;
+      if (size > MAX_STORE_COVER_BYTES) {
+        await reader.cancel();
+        throw new PayloadTooLargeException('Remote cover exceeds the size limit');
+      }
+      chunks.push(value);
+    }
+    if (size === 0) throw new BadGatewayException('Remote cover response was empty');
+    reply
+      .type(contentType)
+      .header('Cache-Control', 'private, max-age=86400')
+      .send(
+        Buffer.concat(
+          chunks.map((chunk) => Buffer.from(chunk)),
+          size,
+        ),
+      );
+  }
+
   private assertUploadPermission(user: RequestUser): void {
-    if (!user.isSuperuser && !user.permissions.includes(Permission.LibraryUpload)) {
+    if (!this.hasUploadPermission(user)) {
       throw new ForbiddenException('Upload books permission is required');
     }
+  }
+
+  private hasUploadPermission(user: RequestUser): boolean {
+    return user.isSuperuser || user.permissions.includes(Permission.LibraryUpload);
   }
 }

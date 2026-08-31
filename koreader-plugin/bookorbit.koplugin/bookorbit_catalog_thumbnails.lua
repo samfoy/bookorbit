@@ -70,6 +70,11 @@ end
 
 local function normalizedBookId(book)
     local id = book and book.id
+    if book and book.external == true then
+        local value = tostring(book.externalId or id or ""):gsub("[^%w_%-]", "_")
+        if value == "" then return nil end
+        return "store_" .. value:sub(1, 96)
+    end
     if type(id) ~= "number" or id ~= math.floor(id) or id < 1 or id > 2147483647 then
         return nil
     end
@@ -377,7 +382,7 @@ function CatalogThumbnails:downloadThumbnailBatch(batch, generation)
                 temp = self.thumbnail_temp_dir .. "/"
                     .. self.thumbnail_cache_session_id .. "_" .. generation .. "_" .. key .. ".part"
             end
-            jobs[#jobs + 1] = { id = book.id, key = key, path = path, temp = temp }
+            jobs[#jobs + 1] = { id = book.id, key = key, path = path, temp = temp, external = book.external == true, cover_url = book.coverUrl }
         end
     end
     if #jobs == 0 then return {} end
@@ -386,7 +391,9 @@ function CatalogThumbnails:downloadThumbnailBatch(batch, generation)
     local completed, result = client:runInSubprocess(function()
         local outcome = {}
         for _, job in ipairs(jobs) do
-            local ok, err = client:downloadCatalogThumbnail(job.id, job.path, {
+            local downloader = job.external and client.downloadCatalogStoreCover or client.downloadCatalogThumbnail
+            local source = job.external and job.cover_url or job.id
+            local ok, err = downloader(client, source, job.path, {
                 temp_path = job.temp,
                 max_bytes = THUMBNAIL_MAX_BYTES,
                 background = false,

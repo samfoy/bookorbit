@@ -37,7 +37,13 @@ import {
   KoreaderCatalogSetRatingDto,
   KoreaderCatalogSetReadStatusDto,
 } from './dto/koreader-catalog-query.dto';
-import { KoreaderStoreBrowseDto, KoreaderStoreCreateAcquisitionDto, KoreaderStoreHomeDto, KoreaderStoreSearchDto } from './dto/koreader-store.dto';
+import {
+  KoreaderStoreBrowseDto,
+  KoreaderStoreCoverDto,
+  KoreaderStoreCreateAcquisitionDto,
+  KoreaderStoreHomeDto,
+  KoreaderStoreSearchDto,
+} from './dto/koreader-store.dto';
 
 @Public()
 @UseGuards(KoreaderAuthGuard)
@@ -148,6 +154,12 @@ export class KoreaderCatalogController {
   @Header('Cache-Control', 'no-store')
   storeConfig(@CurrentUser() user: RequestUser) {
     return this.storeService.getConfig(user);
+  }
+
+  @Get('store/cover')
+  @Header('Cache-Control', 'private, max-age=86400')
+  storeCover(@Query() query: KoreaderStoreCoverDto, @Res() reply: FastifyReply) {
+    return this.storeService.streamCover(query.url, reply);
   }
 
   @Get('store/acquisitions')

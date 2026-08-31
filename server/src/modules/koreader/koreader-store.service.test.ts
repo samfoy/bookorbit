@@ -61,10 +61,19 @@ describe('KoreaderStoreService', () => {
     ]);
 
     await expect(service.getConfig(uploadUser)).resolves.toEqual({
+      canAcquire: true,
       sources: [{ source: 'libgen', available: true, label: 'LibGen', message: null }],
       libraries: [{ id: 3, name: 'Books', folders: [{ id: 9, path: '/books' }] }],
     });
     expect(libraries.findAll).toHaveBeenCalledWith(uploadUser);
+  });
+
+  it('marks acquisition unavailable without upload permission while preserving browse config', async () => {
+    const { service, acquisitions, libraries } = makeService();
+    acquisitions.getCapabilities.mockReturnValue([]);
+    libraries.findAll.mockResolvedValue([]);
+
+    await expect(service.getConfig(deniedUser)).resolves.toEqual({ canAcquire: false, sources: [], libraries: [] });
   });
 
   it('delegates every acquisition lifecycle method with user scoping', async () => {
@@ -99,6 +108,22 @@ describe('KoreaderStoreService', () => {
     expect(acquisitions.listJobs).not.toHaveBeenCalled();
     expect(acquisitions.getJob).not.toHaveBeenCalled();
     expect(acquisitions.cancel).not.toHaveBeenCalled();
+  });
+
+  it('proxies a bounded image response without exposing provider credentials', async () => {
+    const { service } = makeService();
+    const response = new Response(new Uint8Array([1, 2, 3]), { status: 200, headers: { 'content-type': 'image/jpeg' } });
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(response);
+    const reply = { type: vi.fn().mockReturnThis(), header: vi.fn().mockReturnThis(), send: vi.fn() };
+
+    await service.streamCover('https://example.com/cover.jpg', reply as never);
+
+    expect(fetchSpy).toHaveBeenCalledWith(expect.any(URL), expect.objectContaining({ redirect: 'manual' }));
+    const init = fetchSpy.mock.calls[0]?.[1];
+    expect(init?.headers).toEqual(expect.not.objectContaining({ authorization: expect.anything(), 'x-auth-key': expect.anything() }));
+    expect(reply.type).toHaveBeenCalledWith('image/jpeg');
+    expect(reply.send).toHaveBeenCalledWith(Buffer.from([1, 2, 3]));
+    fetchSpy.mockRestore();
   });
 
   it('allows a superuser to access acquisition lifecycle methods without the explicit permission', () => {

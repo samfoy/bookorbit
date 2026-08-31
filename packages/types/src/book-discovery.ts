@@ -124,6 +124,7 @@ export interface KoreaderStoreLibraryOption {
 }
 
 export interface KoreaderStoreConfigResponse {
+  canAcquire: boolean;
   sources: BookAcquisitionSourceCapability[];
   libraries: KoreaderStoreLibraryOption[];
 }

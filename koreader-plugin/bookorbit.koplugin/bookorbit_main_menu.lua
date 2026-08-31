@@ -544,6 +544,13 @@ function MainMenu:addToMainMenu(menu_items)
             end,
             separator = true,
         })
+        table.insert(items, {
+            id = "open_store",
+            text = _("Book Store"),
+            callback = function()
+                self:openBookStore()
+            end,
+        })
         if has_open_book then
             table.insert(items, {
                 id = "sync_current_book",
