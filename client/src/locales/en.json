@@ -7437,7 +7437,9 @@
       "viewAll": "View all",
       "back": "Back to discovery",
       "loadMore": "Load more books",
-      "loadingMore": "Loading more"
+      "loadingMore": "Loading more",
+      "hidingRead": "Hiding books you've read",
+      "showingRead": "Showing books you've read"
     },
     "acquire": {
       "title": "Add to your library",
