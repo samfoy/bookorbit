@@ -359,6 +359,16 @@ describe('KOReader plugin update source wiring', () => {
     expect(sweep).toContain('for md5 in pairs(ctx.state.books) do\n            queue(md5)\n        end');
   });
 
+  it('lets the native Store open its cached home while offline', async () => {
+    const main = await readPluginFile('main.lua');
+    const start = main.indexOf('function BookOrbit:openBookStore()');
+    const finish = main.indexOf('\nend', start);
+    const block = main.slice(start, finish);
+
+    expect(block).toContain('self:openCatalogBrowser(not NetworkMgr:isConnected())');
+    expect(block).not.toContain('NetworkMgr:runWhenConnected');
+  });
+
   it('marks unmatched match-check candidates by source and ambiguity', async () => {
     const api = await readPluginFile('bookorbit_api.lua');
     const sweep = await readPluginFile('bookorbit_sweep.lua');

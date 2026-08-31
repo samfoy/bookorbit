@@ -1130,11 +1130,9 @@ function BookOrbit:openBookStore()
         promptLogin()
         return
     end
-    NetworkMgr:runWhenConnected(function()
-        self:openCatalogBrowser(false)
-        UIManager:nextTick(function()
-            if self.catalog_browser then self.catalog_browser:openBookStore() end
-        end)
+    self:openCatalogBrowser(not NetworkMgr:isConnected())
+    UIManager:nextTick(function()
+        if self.catalog_browser then self.catalog_browser:openBookStore() end
     end)
 end
 

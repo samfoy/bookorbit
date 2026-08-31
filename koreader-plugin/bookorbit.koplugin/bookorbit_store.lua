@@ -102,6 +102,10 @@ function Store:storeHomeItems(body, stale)
 end
 
 function Store:openBookStore()
+    if self:storeCache() and not NetworkMgr:isConnected() then
+        self:loadStoreHome(true)
+        return
+    end
     self:runConnected(function()
         local supported = self:storeSupported()
         if supported == false then
@@ -289,7 +293,15 @@ function Store:storeDestination(config)
     local wanted = tonumber(self.settings.store_library_id)
     for _, library in ipairs(config.libraries or {}) do
         if not wanted or library.id == wanted then
-            local folder = library.folders and library.folders[1]
+            local folder
+            local wanted_folder = tonumber(self.settings.store_folder_id)
+            for _, candidate in ipairs(library.folders or {}) do
+                if candidate.id == wanted_folder then
+                    folder = candidate
+                    break
+                end
+            end
+            folder = folder or (library.folders and library.folders[1])
             return library, folder
         end
     end
@@ -339,14 +351,34 @@ function Store:chooseStoreLibrary(book, config)
     local dialog
     local buttons = {}
     for _, library in ipairs(config.libraries or {}) do
-        local library_id, library_name = library.id, library.name
-        buttons[#buttons + 1] = {{ text = library_name, callback = function()
-            self:persistSetting("store_library_id", library_id)
+        local selected_library = library
+        buttons[#buttons + 1] = {{ text = selected_library.name, callback = function()
+            self:persistSetting("store_library_id", selected_library.id)
+            self:persistSetting("store_folder_id", nil)
+            UIManager:close(dialog)
+            if #(selected_library.folders or {}) > 1 then
+                self:chooseStoreFolder(book, config, selected_library)
+            else
+                self:showStoreAcquire(book)
+            end
+        end }}
+    end
+    dialog = ButtonDialog:new{ title = _("Choose library"), buttons = buttons }
+    UIManager:show(dialog)
+end
+
+function Store:chooseStoreFolder(book, config, library)
+    local dialog
+    local buttons = {}
+    for _, folder in ipairs(library.folders or {}) do
+        local folder_id, folder_path = folder.id, folder.path
+        buttons[#buttons + 1] = {{ text = folder_path, callback = function()
+            self:persistSetting("store_folder_id", folder_id)
             UIManager:close(dialog)
             self:showStoreAcquire(book)
         end }}
     end
-    dialog = ButtonDialog:new{ title = _("Choose library"), buttons = buttons }
+    dialog = ButtonDialog:new{ title = _("Choose folder"), buttons = buttons }
     UIManager:show(dialog)
 end
 
