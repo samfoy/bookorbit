@@ -1130,6 +1130,16 @@ end
 
 function CatalogDetail:buildDetailRating(detail, width)
     local rating = tonumber(detail.rating) or 0
+    if detail.external then
+        local label_face = Font:getFace("xx_smallinfofont", 12)
+        return TextBoxWidget:new{
+            text = rating > 0 and T(_("Store rating: %1"), formatRating(rating)) or _("Not rated"),
+            width = width,
+            height = lineHeight(label_face),
+            height_overflow_show_ellipsis = true,
+            face = label_face,
+        }
+    end
     local star_w = CatalogWidgets.detailRatingStarWidth()
     local star_gap = DETAIL_GAP_XS
     local row = HorizontalGroup:new{ align = "center" }
@@ -1242,6 +1252,15 @@ end
 -- glanceable and one tap to change, without competing with the action button.
 function CatalogDetail:buildDetailProgress(detail, width)
     local label_face = Font:getFace("xx_smallinfofont", 12)
+    if detail.external then
+        return TextBoxWidget:new{
+            text = _("Available from BookOrbit Store"),
+            width = width,
+            height = lineHeight(label_face),
+            height_overflow_show_ellipsis = true,
+            face = label_face,
+        }
+    end
     -- A caption, not a headline: the chevron carries the affordance, so it sits
     -- at the same weight and size as the progress text it shares the line with
     -- rather than out-shouting it.
@@ -1277,6 +1296,18 @@ function CatalogDetail:buildDetailProgress(detail, width)
 end
 
 function CatalogDetail:buildDetailButtons(detail, width)
+    if detail.external then
+        self.detail_download_button = Button:new{
+            text = _("Get & explore"),
+            width = width,
+            height = DETAIL_BUTTON_HEIGHT,
+            text_font_size = 15,
+            callback = function()
+                self:showStoreBookActions(detail.storeBook)
+            end,
+        }
+        return self.detail_download_button
+    end
     local supported_files = self.current_context.supported_files or {}
     local read_path = self:detailReadPath(detail)
 
@@ -1355,7 +1386,11 @@ function CatalogDetail:buildDetailHeader(detail, width)
                 width = text_w,
                 face = author_face,
                 callback = function()
-                    self:openDetailSeries(detail)
+                    if detail.external then
+                        self:showBookInfo(detail)
+                    else
+                        self:openDetailSeries(detail)
+                    end
                 end,
             }
             table.insert(group, VerticalSpan:new{ width = DETAIL_GAP_XS })

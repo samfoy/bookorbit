@@ -120,7 +120,7 @@ for _ in $(seq 1 80); do
 done
 [[ $ready == 1 ]] || { echo "KOReader emulator window did not start" >&2; tail -80 /output/koreader.log >&2; exit 1; }
 
-python3 /workspace/scripts/koreader-emulator/drive.py "$SCENARIO" --wait 5
+python3 /workspace/scripts/koreader-emulator/drive.py "$SCENARIO" --wait "${KOREADER_EMULATOR_WAIT:-8}"
 sleep 2
 import -window root /output/koreader-${WIDTH}x${HEIGHT}-${SCENARIO}.png
 identify /output/koreader-${WIDTH}x${HEIGHT}-${SCENARIO}.png

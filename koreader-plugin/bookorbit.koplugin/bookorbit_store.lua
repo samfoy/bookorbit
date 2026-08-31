@@ -72,6 +72,11 @@ function Store:storeSupported()
     return Capabilities.supports(self.client, "catalogStore")
 end
 
+function Store:storeCapabilityAdvertised()
+    local known = Capabilities.cached(self.client)
+    return known ~= nil and known.catalogStore == true
+end
+
 function Store:storeHideRead()
     return self.settings.store_hide_read ~= false
 end
@@ -84,17 +89,33 @@ function Store:cacheStoreHome(body)
     if type(body) == "table" then self:persistSetting("store_home_cache", body) end
 end
 
-function Store:storeHomeItems(body, stale)
-    local trending = body and body.trending or {}
-    local books = Store.mapBooks(trending.items)
+function Store:nextStoreRequestGeneration()
+    self.store_request_generation = (self.store_request_generation or 0) + 1
+    return self.store_request_generation
+end
+
+function Store:storeRequestIsCurrent(generation)
+    return not self.catalog_closed and generation == self.store_request_generation
+end
+
+function Store:storeHomeItems(body, stale, page)
+    local shelves = {}
+    if type(body) == "table" and type(body.trending) == "table" then shelves[#shelves + 1] = body.trending end
+    for _, shelf in ipairs((body or {}).genreShelves or {}) do shelves[#shelves + 1] = shelf end
+    page = math.max(1, math.min(tonumber(page) or 1, math.max(1, #shelves)))
+    local section = shelves[page] or { title = _("Trending this week"), kind = "trending", items = {} }
+    local books = Store.mapBooks(section.items)
+    local subtitle = section.title or _("Trending this week")
+    if stale then subtitle = subtitle .. " - " .. _("offline cache") end
     return self:storeBookItems(books), {
         kind = "store-books",
         title = _("Book Store"),
-        subtitle = stale and _("Trending this week - offline cache") or _("Trending this week"),
+        subtitle = subtitle,
         books = books,
-        page = 1,
-        page_count = 1,
-        store_kind = "trending",
+        page = page,
+        page_count = math.max(1, #shelves),
+        store_kind = section.kind or "trending",
+        store_value = section.value,
         store_landing = true,
         store_home = body,
         stale = stale == true,
@@ -120,6 +141,7 @@ function Store:openBookStore()
 end
 
 function Store:loadStoreHome(push)
+    local request_generation = self:nextStoreRequestGeneration()
     local cached = self:storeCache()
     if cached and not NetworkMgr:isConnected() then
         local items, context = self:storeHomeItems(cached, true)
@@ -127,9 +149,11 @@ function Store:loadStoreHome(push)
         return
     end
     self:runConnected(function()
+        if not self:storeRequestIsCurrent(request_generation) then return end
         local body, err = self:fetch(_("Loading Book Store..."), function()
             return self.client:catalogStoreHome(self:storeHideRead())
         end)
+        if not self:storeRequestIsCurrent(request_generation) then return end
         if not body then
             if cached then
                 local items, context = self:storeHomeItems(cached, true)
@@ -154,9 +178,16 @@ function Store:storeBookItems(books)
     return items
 end
 
+function Store:showStoreHomeShelf(home, page, push)
+    local items, context = self:storeHomeItems(home, false, page)
+    self:switchTo(context.title, items, context, push)
+end
+
 function Store:loadStoreBrowse(kind, value, page, title, push)
     page = page or 1
+    local request_generation = self:nextStoreRequestGeneration()
     self:runConnected(function()
+        if not self:storeRequestIsCurrent(request_generation) then return end
         local body, err = self:fetch(_("Loading books..."), function()
             return self.client:catalogStoreBrowse({
                 kind = kind,
@@ -166,6 +197,7 @@ function Store:loadStoreBrowse(kind, value, page, title, push)
                 hideRead = self:storeHideRead(),
             })
         end)
+        if not self:storeRequestIsCurrent(request_generation) then return end
         if not body then
             if err ~= "cancelled" then self:showRetry(err, function() self:loadStoreBrowse(kind, value, page, title, push) end) end
             return
@@ -207,10 +239,13 @@ function Store:promptStoreSearch()
 end
 
 function Store:loadStoreSearch(query, push)
+    local request_generation = self:nextStoreRequestGeneration()
     self:runConnected(function()
+        if not self:storeRequestIsCurrent(request_generation) then return end
         local body, err = self:fetch(_("Searching books..."), function()
             return self.client:catalogStoreSearch(query, "hardcover,storygraph")
         end)
+        if not self:storeRequestIsCurrent(request_generation) then return end
         if not body then
             if err ~= "cancelled" then self:showRetry(err, function() self:loadStoreSearch(query, push) end) end
             return
@@ -244,7 +279,41 @@ function Store:storeDescription(book)
     return table.concat(lines, "\n")
 end
 
+function Store.storeDetail(book)
+    local genres = {}
+    for _, genre in ipairs(book.genres or {}) do genres[#genres + 1] = genre.name or genre.slug end
+    local tags = {}
+    for _, source in ipairs(book.sources or {}) do
+        local name = tostring(source.source or "")
+        if name ~= "" then tags[#tags + 1] = name:sub(1, 1):upper() .. name:sub(2) end
+    end
+    return {
+        id = book.externalId,
+        title = book.title,
+        authors = book.authors or {},
+        description = book.description,
+        coverUrl = book.coverUrl,
+        publishedYear = book.publishedYear,
+        rating = book.rating,
+        pageCount = book.pageCount,
+        seriesName = book.seriesName,
+        seriesIndex = book.seriesIndex,
+        isbn10 = book.isbn10,
+        isbn13 = book.isbn13,
+        genres = genres,
+        tags = tags,
+        files = {},
+        relatedSections = {},
+        external = true,
+        storeBook = book,
+    }
+end
+
 function Store:showStoreBook(book)
+    self:showBookDetail(Store.storeDetail(book), { external = true })
+end
+
+function Store:showStoreBookActions(book)
     local dialog
     local buttons = {{
         { text = _("Get"), callback = function() UIManager:close(dialog); self:showStoreAcquire(book) end },
@@ -413,10 +482,12 @@ function Store:storeJobForBook(external_id)
 end
 
 function Store:startStoreAcquisition(book, library_id, folder_id, source)
-    if self:storeJobForBook(book.externalId) then
+    self.store_starting_jobs = self.store_starting_jobs or {}
+    if self:storeJobForBook(book.externalId) or self.store_starting_jobs[book.externalId] then
         UIManager:show(InfoMessage:new{ text = _("This book is already being acquired."), timeout = 3 })
         return
     end
+    self.store_starting_jobs[book.externalId] = true
     self:runConnected(function()
         local job, err = self:fetch(_("Starting acquisition..."), function()
             return self.client:catalogStoreStartAcquisition({
@@ -430,12 +501,14 @@ function Store:startStoreAcquisition(book, library_id, folder_id, source)
             })
         end)
         if not job then
+            self.store_starting_jobs[book.externalId] = nil
             if err ~= "cancelled" then self:showServerError(err) end
             return
         end
         local jobs = self:activeStoreJobs()
         jobs[#jobs + 1] = { id = job.id, external_id = book.externalId, title = book.title }
         self:persistActiveStoreJobs(jobs)
+        self.store_starting_jobs[book.externalId] = nil
         Notification:notify(T(_("Getting %1"), book.title))
         self:pollStoreAcquisition(job.id, book.title)
     end)
@@ -513,8 +586,13 @@ function Store:showStoreJob(job)
         buttons[#buttons + 1] = {{ text = _("Cancel acquisition"), callback = function()
             UIManager:close(dialog)
             self:runConnected(function()
-                self.client:catalogStoreCancelAcquisition(job.id)
-                self:removeActiveStoreJob(job.id)
+                local cancelled, err = self.client:catalogStoreCancelAcquisition(job.id)
+                if cancelled and cancelled.status == "cancelled" then
+                    self:removeActiveStoreJob(job.id)
+                    return
+                end
+                if err then self:showServerError(err) end
+                self:pollStoreAcquisition(job.id, job.title)
             end)
         end }}
     end

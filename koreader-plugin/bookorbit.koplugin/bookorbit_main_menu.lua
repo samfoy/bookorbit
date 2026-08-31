@@ -359,6 +359,11 @@ function MainMenu:knownServerCapabilities(catalog)
     return client and BookOrbitCapabilities.cached(client) or nil
 end
 
+function MainMenu:storeMenuSupported()
+    local known = self:knownServerCapabilities(self.catalog_browser)
+    return known ~= nil and known.catalogStore == true
+end
+
 function MainMenu:dashboardSectionItems(index, catalog)
     local items = {}
     local known_capabilities = self:knownServerCapabilities(catalog)
@@ -544,13 +549,15 @@ function MainMenu:addToMainMenu(menu_items)
             end,
             separator = true,
         })
-        table.insert(items, {
-            id = "open_store",
-            text = _("Book Store"),
-            callback = function()
-                self:openBookStore()
-            end,
-        })
+        if self:storeMenuSupported() then
+            table.insert(items, {
+                id = "open_store",
+                text = _("Book Store"),
+                callback = function()
+                    self:openBookStore()
+                end,
+            })
+        end
         if has_open_book then
             table.insert(items, {
                 id = "sync_current_book",

@@ -93,13 +93,18 @@ describe('KOReader plugin update source wiring', () => {
     const api = await readPluginFile('bookorbit_api.lua');
     const menu = await readPluginFile('bookorbit_main_menu.lua');
     const store = await readPluginFile('bookorbit_store.lua');
+    const detail = await readPluginFile('bookorbit_catalog_detail.lua');
 
     expect(main).toContain('local PLUGIN_VERSION = "1.6.0"');
     expect(catalog).toContain('local BookOrbitStore = require("bookorbit_store")');
     expect(catalog).toContain('BookOrbitStore.install(BookOrbitCatalog)');
+    expect(catalog).toContain('if self.nextStoreRequestGeneration then self:nextStoreRequestGeneration() end');
     expect(menu).toContain('text = _("Book Store")');
     expect(menu).toContain('self:openBookStore()');
     expect(store).toContain('Capabilities.supports(self.client, "catalogStore")');
+    expect(store).toContain('self:showBookDetail(Store.storeDetail(book), { external = true })');
+    expect(detail).toContain('if detail.external then');
+    expect(detail).toContain('self:showStoreBookActions(detail.storeBook)');
     expect(store).toContain('function Store:loadStoreHome');
     expect(store).toContain('function Store:showStoreBook');
     expect(store).toContain('function Store:startStoreAcquisition');

@@ -96,15 +96,14 @@ export class KoreaderStoreService {
       chunks.push(value);
     }
     if (size === 0) throw new BadGatewayException('Remote cover response was empty');
-    reply
-      .type(contentType)
-      .header('Cache-Control', 'private, max-age=86400')
-      .send(
-        Buffer.concat(
-          chunks.map((chunk) => Buffer.from(chunk)),
-          size,
-        ),
-      );
+    const body = Buffer.concat(
+      chunks.map((chunk) => Buffer.from(chunk)),
+      size,
+    );
+    if (!this.coverBytesMatchType(body, contentType)) {
+      throw new BadGatewayException('Remote cover bytes did not match its image type');
+    }
+    reply.type(contentType).header('Cache-Control', 'private, max-age=86400').send(body);
   }
 
   private assertUploadPermission(user: RequestUser): void {
@@ -115,5 +114,14 @@ export class KoreaderStoreService {
 
   private hasUploadPermission(user: RequestUser): boolean {
     return user.isSuperuser || user.permissions.includes(Permission.LibraryUpload);
+  }
+
+  private coverBytesMatchType(body: Buffer, contentType: string): boolean {
+    if (contentType === 'image/jpeg') return body.length >= 3 && body[0] === 0xff && body[1] === 0xd8 && body[2] === 0xff;
+    if (contentType === 'image/png')
+      return body.length >= 8 && body.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+    if (contentType === 'image/webp')
+      return body.length >= 12 && body.subarray(0, 4).toString('ascii') === 'RIFF' && body.subarray(8, 12).toString('ascii') === 'WEBP';
+    return false;
   }
 }

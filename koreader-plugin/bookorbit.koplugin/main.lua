@@ -32,6 +32,7 @@ local _ = require("gettext")
 local BookOrbitAnnotations = require("bookorbit_annotations")
 local BookOrbitBookmarks = require("bookorbit_bookmarks")
 local BookOrbitApi = require("bookorbit_api")
+local BookOrbitCapabilities = require("bookorbit_capabilities")
 local BookOrbitBookSync = require("bookorbit_book_sync")
 local BookOrbitCatalog = require("bookorbit_catalog")
 local BookOrbitHighlightSummary = require("bookorbit_highlight_summary")
@@ -189,6 +190,14 @@ function BookOrbit:init()
     UIManager:scheduleIn(5, function()
         self:requestLifecycleOutboxDrain("startup")
         self:requestUpdateCheck(false, "startup")
+        self:requestStoreCapability()
+    end)
+end
+
+function BookOrbit:requestStoreCapability()
+    if not self:isLoggedIn() or not NetworkMgr:isConnected() then return end
+    self:runInSyncCoroutine(function()
+        BookOrbitCapabilities.supports(self:newClient(), "catalogStore")
     end)
 end
 

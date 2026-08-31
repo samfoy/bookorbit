@@ -25,6 +25,10 @@ package.loaded["util"] = {
     end,
 }
 package.loaded["bookorbit_api"] = {}
+local advertised_capabilities = { catalogStore = true }
+package.loaded["bookorbit_capabilities"] = {
+    cached = function() return advertised_capabilities end,
+}
 package.loaded["bookorbit_sweep"] = {
     syncStatus = function()
         return { lastSweepAt = 0, matched = 0, unmatched = 0 }
@@ -89,6 +93,7 @@ local function newPlugin(logged_in)
         getSyncPeriod = function()
             return 10
         end,
+        newClient = function() return {} end,
     }
     MainMenu.install(plugin)
     return plugin
@@ -124,6 +129,11 @@ assertSeparator(items, 4, true, "file manager settings ends settings group")
 assertSeparator(items, 5, false, "file manager setup has no trailing separator")
 assertEqual(hasItem(items, "Open dashboard"), true, "logged-in menu shows dashboard")
 assertEqual(hasItem(items, "Book Store"), true, "logged-in menu shows native store")
+
+advertised_capabilities = {}
+local legacy_items = menuItems(newPlugin(true))
+assertEqual(hasItem(legacy_items, "Book Store"), false, "legacy server menu hides unsupported Store")
+advertised_capabilities = { catalogStore = true }
 assertEqual(hasItem(items, "Open dashboard on startup (Off)"), false, "logged-in top level hides dashboard startup")
 assertEqual(hasItem(items, "Installed plugin: current"), false, "logged-in top level hides update row")
 assertEqual(hasItem(items, "Current book"), false, "file manager menu hides current book")

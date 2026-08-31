@@ -46,6 +46,25 @@ assert(Store.jobIsActive({ status = "completed" }) == false)
 assert(Store.jobIsCancellable({ status = "optimizing" }) == true)
 assert(Store.jobIsCancellable({ status = "importing" }) == false)
 
+local external_detail = Store.storeDetail(books[1])
+assert(external_detail.external == true)
+assert(external_detail.storeBook == books[1])
+assert(external_detail.genres[1] == "Fantasy")
+assert(external_detail.tags[1] == "Hardcover")
+local shown_detail
+Store.showStoreBook({ showBookDetail = function(_, detail) shown_detail = detail end }, books[1])
+assert(shown_detail == external_detail or (shown_detail and shown_detail.external), "Store selection must open the native detail page")
+
+local home_menu = { storeBookItems = Store.storeBookItems }
+local home = {
+    trending = { title = "Trending this week", items = { books[1] } },
+    genreShelves = { { title = "Fantasy", kind = "genre", value = "fantasy", items = { books[1] } } },
+}
+local _, trending_context = Store.storeHomeItems(home_menu, home, false, 1)
+local _, fantasy_context = Store.storeHomeItems(home_menu, home, false, 2)
+assert(trending_context.page_count == 2, "Store landing must page through trending and genre shelves")
+assert(fantasy_context.subtitle == "Fantasy", "Store landing second shelf must render the genre shelf")
+
 local persisted
 local client_calls = 0
 local menu = {
@@ -60,6 +79,62 @@ Store.startStoreAcquisition(menu, books[1], 1, nil, "auto")
 assert(client_calls == 0, "a second tap must not create a duplicate job")
 assert(#shown > 0, "duplicate acquisition should be explained")
 assert(persisted == nil, "duplicate acquisition must not rewrite active state")
+
+local pending_starts = {}
+local racing_menu = {
+    settings = { store_active_jobs = {} },
+    activeStoreJobs = Store.activeStoreJobs,
+    storeJobForBook = Store.storeJobForBook,
+    persistActiveStoreJobs = Store.persistActiveStoreJobs,
+    persistSetting = function(self, key, value) self.settings[key] = value end,
+    runConnected = function(_, callback) pending_starts[#pending_starts + 1] = callback end,
+    fetch = function(_, _, callback) return callback() end,
+    client = { catalogStoreStartAcquisition = function()
+        client_calls = client_calls + 1
+        return { id = "job-" .. client_calls, status = "queued" }
+    end },
+    pollStoreAcquisition = function() end,
+}
+client_calls = 0
+Store.startStoreAcquisition(racing_menu, books[1], 1, nil, "auto")
+Store.startStoreAcquisition(racing_menu, books[1], 1, nil, "auto")
+assert(#pending_starts == 1, "rapid duplicate taps must schedule only one acquisition request")
+pending_starts[1]()
+assert(client_calls == 1, "only one acquisition POST may run for one external book")
+
+local pending_searches = {}
+local search_menu = {
+    catalog_closed = false,
+    runConnected = function(_, callback) pending_searches[#pending_searches + 1] = callback end,
+    fetch = function(_, _, callback) return callback() end,
+    client = { catalogStoreSearch = function(_, query)
+        return { results = { { id = query, title = query, authors = {} } }, sources = {} }
+    end },
+    nextStoreRequestGeneration = Store.nextStoreRequestGeneration,
+    storeRequestIsCurrent = Store.storeRequestIsCurrent,
+    storeBookItems = Store.storeBookItems,
+    switchTo = function(self, _, _, context) self.current_context = context end,
+}
+Store.loadStoreSearch(search_menu, "old", true)
+Store.loadStoreSearch(search_menu, "new", true)
+pending_searches[2]()
+pending_searches[1]()
+assert(search_menu.current_context.store_query == "new", "a stale response must not replace newer Store navigation")
+
+shown = {}
+local removed_jobs, resumed_jobs, cancellation_errors = 0, 0, 0
+local cancel_menu = {
+    runConnected = function(_, callback) callback() end,
+    client = { catalogStoreCancelAcquisition = function() return nil, 409 end },
+    removeActiveStoreJob = function() removed_jobs = removed_jobs + 1 end,
+    pollStoreAcquisition = function() resumed_jobs = resumed_jobs + 1 end,
+    showServerError = function() cancellation_errors = cancellation_errors + 1 end,
+}
+Store.showStoreJob(cancel_menu, { id = "job-1", title = "Piranesi", status = "downloading" })
+shown[#shown].buttons[1][1].callback()
+assert(removed_jobs == 0, "a failed cancellation must retain the active job")
+assert(resumed_jobs == 1, "a failed cancellation must resume job polling")
+assert(cancellation_errors == 1, "a failed cancellation must be visible")
 
 local selected_library, selected_folder = Store.storeDestination({
     settings = { store_library_id = 2, store_folder_id = 22 },

@@ -112,7 +112,8 @@ describe('KoreaderStoreService', () => {
 
   it('proxies a bounded image response without exposing provider credentials', async () => {
     const { service } = makeService();
-    const response = new Response(new Uint8Array([1, 2, 3]), { status: 200, headers: { 'content-type': 'image/jpeg' } });
+    const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xdb]);
+    const response = new Response(jpeg, { status: 200, headers: { 'content-type': 'image/jpeg' } });
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(response);
     const reply = { type: vi.fn().mockReturnThis(), header: vi.fn().mockReturnThis(), send: vi.fn() };
 
@@ -122,7 +123,18 @@ describe('KoreaderStoreService', () => {
     const init = fetchSpy.mock.calls[0]?.[1];
     expect(init?.headers).toEqual(expect.not.objectContaining({ authorization: expect.anything(), 'x-auth-key': expect.anything() }));
     expect(reply.type).toHaveBeenCalledWith('image/jpeg');
-    expect(reply.send).toHaveBeenCalledWith(Buffer.from([1, 2, 3]));
+    expect(reply.send).toHaveBeenCalledWith(Buffer.from(jpeg));
+    fetchSpy.mockRestore();
+  });
+
+  it('rejects a remote body whose bytes do not match its claimed image type', async () => {
+    const { service } = makeService();
+    const response = new Response(Buffer.from('<html>not an image</html>'), { status: 200, headers: { 'content-type': 'image/jpeg' } });
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(response);
+    const reply = { type: vi.fn().mockReturnThis(), header: vi.fn().mockReturnThis(), send: vi.fn() };
+
+    await expect(service.streamCover('https://example.com/not-an-image.jpg', reply as never)).rejects.toThrow('bytes did not match');
+    expect(reply.send).not.toHaveBeenCalled();
     fetchSpy.mockRestore();
   });
 

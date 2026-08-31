@@ -763,6 +763,7 @@ function BookOrbitCatalog:updateReturnPath()
 end
 
 function BookOrbitCatalog:switchTo(title, item_table, context, push)
+    if self.nextStoreRequestGeneration then self:nextStoreRequestGeneration() end
     self:cancelThumbnailJobs()
     if push and self.current_context then
         table.insert(self.stack, {
@@ -1684,15 +1685,17 @@ function BookOrbitCatalog:showBookActions()
     end
 
     if not self:dashboardMode() then
-        table.insert(buttons, {
-            {
-                text = _("Book Store"),
-                callback = function()
-                    UIManager:close(dialog)
-                    self:openBookStore()
-                end,
-            },
-        })
+        if self:storeCapabilityAdvertised() then
+            table.insert(buttons, {
+                {
+                    text = _("Book Store"),
+                    callback = function()
+                        UIManager:close(dialog)
+                        self:openBookStore()
+                    end,
+                },
+            })
+        end
         table.insert(buttons, {
             {
                 text = _("Dashboard"),
@@ -2200,7 +2203,12 @@ function BookOrbitCatalog:updateListItems(select_number, no_recalculate_dimen)
 end
 
 function BookOrbitCatalog:onGotoPage(page)
-    if self.current_context and self.current_context.kind == "store-books" then
+    if self.current_context and self.current_context.store_landing then
+        local context = self.current_context
+        if page < 1 or page > (context.page_count or 1) or page == context.page then return true end
+        self:showStoreHomeShelf(context.store_home, page, false)
+        return true
+    elseif self.current_context and self.current_context.kind == "store-books" then
         local context = self.current_context
         if page < 1 or page > (context.page_count or 1) or page == context.page then return true end
         self:loadStoreBrowse(context.store_kind, context.store_value, page, context.title, false)
