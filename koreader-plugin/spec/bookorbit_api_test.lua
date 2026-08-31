@@ -185,7 +185,7 @@ assertEqual(last_request_url,
     "store browse uses bounded query parameters")
 client:catalogStoreSearch("Piranesi", "hardcover,storygraph")
 assertEqual(last_request_url,
-    "https://bookorbit.example.com/api/v1/koreader/plugin/catalog/store/search?query=Piranesi&sources=hardcover,storygraph",
+    "https://bookorbit.example.com/api/v1/koreader/plugin/catalog/store/search?hideRead=true&query=Piranesi&sources=hardcover,storygraph",
     "store search stays behind BookOrbit")
 client:catalogStoreStartAcquisition({ libraryId = 1, title = "Piranesi", authors = { "Susanna Clarke" }, source = "auto" })
 assertEqual(last_request_method, "POST", "store acquisition uses POST")

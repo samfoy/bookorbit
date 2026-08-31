@@ -20,31 +20,63 @@ function makeService() {
     getCapabilities: vi.fn(),
   };
   const libraries = { findAll: vi.fn() };
+  const phase2 = {
+    enrichResults: vi.fn((_user, books) => Promise.resolve(books.map((book: object) => ({ ...book, state: { alreadyRead: false } })))),
+  };
   return {
-    service: new KoreaderStoreService(discovery as never, browse as never, acquisitions as never, libraries as never),
+    service: new KoreaderStoreService(discovery as never, browse as never, acquisitions as never, libraries as never, phase2 as never),
     discovery,
     browse,
     acquisitions,
     libraries,
+    phase2,
   };
 }
 
 describe('KoreaderStoreService', () => {
   it('delegates home, browse, and search with the authenticated user id', async () => {
     const { service, discovery, browse } = makeService();
-    browse.getBrowseHome.mockResolvedValue({ generatedAt: 'now' });
-    browse.browse.mockResolvedValue({ id: 'genre-fantasy' });
+    browse.getBrowseHome.mockResolvedValue({ generatedAt: 'now', trending: { items: [] }, genreShelves: [] });
+    browse.browse.mockResolvedValue({ id: 'genre-fantasy', items: [] });
     discovery.search.mockResolvedValue({ results: [], sources: [] });
 
-    await expect(service.getHome(uploadUser, { hideRead: false })).resolves.toEqual({ generatedAt: 'now' });
+    await expect(service.getHome(uploadUser, { hideRead: false })).resolves.toEqual({
+      generatedAt: 'now',
+      trending: { items: [] },
+      genreShelves: [],
+    });
     await expect(service.browse(uploadUser, { kind: 'genre', value: 'fantasy', page: 2, pageSize: 12, hideRead: true })).resolves.toEqual({
       id: 'genre-fantasy',
+      items: [],
     });
     await expect(service.search(uploadUser, { query: 'Piranesi', sources: ['hardcover'] })).resolves.toEqual({ results: [], sources: [] });
 
     expect(browse.getBrowseHome).toHaveBeenCalledWith(17, false);
     expect(browse.browse).toHaveBeenCalledWith(17, { kind: 'genre', value: 'fantasy', page: 2, pageSize: 12, hideRead: true });
     expect(discovery.search).toHaveBeenCalledWith(17, { query: 'Piranesi', sources: ['hardcover'] });
+  });
+
+  it('enriches every Store result and hides authoritative read matches unless explicitly revealed', async () => {
+    const { service, discovery, browse, phase2 } = makeService();
+    const unread = { id: 'hardcover:1', title: 'Unread' };
+    const read = { id: 'hardcover:2', title: 'Read' };
+    const enriched = [
+      { ...unread, state: { alreadyRead: false } },
+      { ...read, state: { alreadyRead: true } },
+    ];
+    phase2.enrichResults.mockResolvedValue(enriched);
+    browse.browse.mockResolvedValue({ id: 'trending', items: [unread, read] });
+    discovery.search.mockResolvedValue({ results: [unread, read], sources: [] });
+
+    await expect(service.browse(uploadUser, { kind: 'trending', page: 1, pageSize: 12, hideRead: true })).resolves.toEqual({
+      id: 'trending',
+      items: [enriched[0]],
+    });
+    await expect(service.search(uploadUser, { query: 'books', sources: ['hardcover'], hideRead: false })).resolves.toEqual({
+      results: enriched,
+      sources: [],
+    });
+    expect(phase2.enrichResults).toHaveBeenCalledWith(uploadUser, [unread, read]);
   });
 
   it('maps only safe acquisition capabilities and accessible library fields', async () => {

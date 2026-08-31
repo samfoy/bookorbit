@@ -1,3 +1,5 @@
+import type { ReadStatus } from "./book";
+
 export const EXTERNAL_CATALOG_SOURCES = ["hardcover", "storygraph"] as const;
 export type ExternalCatalogSource = (typeof EXTERNAL_CATALOG_SOURCES)[number];
 
@@ -24,6 +26,19 @@ export interface ExternalBookSearchResult {
   hasEbook: boolean | null;
   genres: ExternalBookGenre[];
   sources: ExternalBookSourceLink[];
+  state?: KoreaderStoreResultState;
+}
+
+export interface KoreaderStoreResultState {
+  inBookOrbit: boolean;
+  bookId: number | null;
+  localFormats: string[];
+  bookOrbitStatus: ReadStatus | null;
+  progressPercentage: number | null;
+  hardcoverStatus: string | null;
+  storygraphStatus: string | null;
+  alreadyRead: boolean;
+  alreadyOwned: boolean;
 }
 
 export interface ExternalBookGenre {

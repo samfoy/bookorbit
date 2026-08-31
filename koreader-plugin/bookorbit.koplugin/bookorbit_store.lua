@@ -31,6 +31,7 @@ end
 
 local function externalBook(book)
     book = book or {}
+    local state = type(book.state) == "table" and book.state or {}
     return {
         id = tostring(book.id or ""),
         title = book.title or _("Untitled"),
@@ -51,6 +52,16 @@ local function externalBook(book)
         hasCover = type(book.coverUrl) == "string" and book.coverUrl:match("^https://") ~= nil,
         external = true,
         externalId = tostring(book.id or ""),
+        inBookOrbit = state.inBookOrbit == true,
+        bookId = tonumber(state.bookId),
+        formats = state.localFormats or {},
+        readStatus = state.bookOrbitStatus,
+        progressPercentage = state.progressPercentage,
+        hardcoverStatus = state.hardcoverStatus,
+        storygraphStatus = state.storygraphStatus,
+        alreadyRead = state.alreadyRead == true,
+        alreadyOwned = state.alreadyOwned == true,
+        onDevice = false,
     }
 end
 
@@ -58,6 +69,26 @@ function Store.mapBooks(items)
     local books = {}
     for _, item in ipairs(items or {}) do books[#books + 1] = externalBook(item) end
     return books
+end
+
+function Store:overlayDeviceState(books)
+    for _, book in ipairs(books or {}) do
+        local path = book.bookId and self.on_device and self.on_device[book.bookId] or nil
+        book.onDevice = type(path) == "string" and path ~= ""
+        book.localPath = book.onDevice and path or nil
+    end
+    return books
+end
+
+function Store:stateBadge(book, acquiring)
+    if acquiring then return _("Acquiring") end
+    if book.onDevice then return _("On Device") end
+    if book.alreadyRead then return _("Read") end
+    if book.readStatus == "reading" or book.readStatus == "rereading" then return _("Reading") end
+    if book.readStatus == "want_to_read" or book.hardcoverStatus == "want_to_read"
+            or book.storygraphStatus == "to-read" then return _("Want to Read") end
+    if book.alreadyOwned then return _("In BookOrbit") end
+    return _("Not owned")
 end
 
 function Store.jobIsActive(job)
@@ -78,7 +109,7 @@ function Store:storeCapabilityAdvertised()
 end
 
 function Store:storeHideRead()
-    return self.settings.store_hide_read ~= false
+    return not self.settings or self.settings.store_hide_read ~= false
 end
 
 function Store:storeCache()
@@ -105,6 +136,7 @@ function Store:storeHomeItems(body, stale, page)
     page = math.max(1, math.min(tonumber(page) or 1, math.max(1, #shelves)))
     local section = shelves[page] or { title = _("Trending this week"), kind = "trending", items = {} }
     local books = Store.mapBooks(section.items)
+    Store.overlayDeviceState(self, books)
     local subtitle = section.title or _("Trending this week")
     if stale then subtitle = subtitle .. " - " .. _("offline cache") end
     return self:storeBookItems(books), {
@@ -173,7 +205,12 @@ end
 function Store:storeBookItems(books)
     local items = {}
     for _, book in ipairs(books or {}) do
-        items[#items + 1] = { text = book.title, kind = "store-book", book = book }
+        local acquiring = Store.storeJobForBook(self, book.externalId) ~= nil
+        items[#items + 1] = {
+            text = book.title .. " - " .. Store.stateBadge(self, book, acquiring),
+            kind = "store-book",
+            book = book,
+        }
     end
     return items
 end
@@ -203,6 +240,7 @@ function Store:loadStoreBrowse(kind, value, page, title, push)
             return
         end
         local books = Store.mapBooks(body.items)
+        Store.overlayDeviceState(self, books)
         local context = {
             kind = "store-books",
             title = body.title or title or _("Book Store"),
@@ -243,7 +281,7 @@ function Store:loadStoreSearch(query, push)
     self:runConnected(function()
         if not self:storeRequestIsCurrent(request_generation) then return end
         local body, err = self:fetch(_("Searching books..."), function()
-            return self.client:catalogStoreSearch(query, "hardcover,storygraph")
+            return self.client:catalogStoreSearch(query, "hardcover,storygraph", Store.storeHideRead(self))
         end)
         if not self:storeRequestIsCurrent(request_generation) then return end
         if not body then
@@ -251,6 +289,7 @@ function Store:loadStoreSearch(query, push)
             return
         end
         local books = Store.mapBooks(body.results)
+        Store.overlayDeviceState(self, books)
         local unavailable = {}
         for _, source in ipairs(body.sources or {}) do
             if source.available == false then unavailable[#unavailable + 1] = source.source end
@@ -386,6 +425,10 @@ function Store:storeSource(config)
 end
 
 function Store:showStoreAcquire(book)
+    if book.alreadyOwned and book.bookId then
+        self:showOwnedStoreBook(book)
+        return
+    end
     self:loadStoreConfig(function(config)
         if config.canAcquire == false then
             UIManager:show(InfoMessage:new{ text = _("Your BookOrbit account cannot acquire books."), timeout = 4 })
@@ -413,6 +456,20 @@ function Store:showStoreAcquire(book)
             },
         }
         UIManager:show(dialog)
+    end)
+end
+
+function Store:showOwnedStoreBook(book)
+    self:runConnected(function()
+        local detail, err = self:fetch(_("Loading BookOrbit book..."), function()
+            return self.client:catalogBook(book.bookId)
+        end)
+        if not detail then
+            if err ~= "cancelled" then self:showServerError(err) end
+            return
+        end
+        self:cacheBookDetail(detail)
+        self:showBookActionSheet(detail, { include_page_actions = true })
     end)
 end
 
@@ -467,7 +524,7 @@ function Store:chooseStoreSource(book, config)
 end
 
 function Store:activeStoreJobs()
-    local jobs = self.settings.store_active_jobs
+    local jobs = self.settings and self.settings.store_active_jobs
     return type(jobs) == "table" and jobs or {}
 end
 
@@ -476,13 +533,17 @@ function Store:persistActiveStoreJobs(jobs)
 end
 
 function Store:storeJobForBook(external_id)
-    for _, entry in ipairs(self:activeStoreJobs()) do
+    for _, entry in ipairs(Store.activeStoreJobs(self)) do
         if entry.external_id == external_id then return entry end
     end
 end
 
 function Store:startStoreAcquisition(book, library_id, folder_id, source)
     self.store_starting_jobs = self.store_starting_jobs or {}
+    if book.alreadyOwned and book.bookId then
+        self:showOwnedStoreBook(book)
+        return
+    end
     if self:storeJobForBook(book.externalId) or self.store_starting_jobs[book.externalId] then
         UIManager:show(InfoMessage:new{ text = _("This book is already being acquired."), timeout = 3 })
         return

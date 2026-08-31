@@ -606,10 +606,11 @@ function BookOrbitApi:catalogStoreBrowse(params)
     return self:request("GET", self:query("/koreader/plugin/catalog/store/browse", params))
 end
 
-function BookOrbitApi:catalogStoreSearch(query, sources)
+function BookOrbitApi:catalogStoreSearch(query, sources, hide_read)
     return self:request("GET", self:query("/koreader/plugin/catalog/store/search", {
         query = query,
         sources = sources,
+        hideRead = hide_read ~= false,
     }))
 end
 

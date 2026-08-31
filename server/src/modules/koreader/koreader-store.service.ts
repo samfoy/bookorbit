@@ -12,6 +12,7 @@ import type { BrowseHomeDto } from '../book-discovery/dto/browse-home.dto';
 import type { SearchExternalBooksDto } from '../book-discovery/dto/search-external-books.dto';
 import { HardcoverCatalogBrowseService } from '../hardcover/hardcover-catalog-browse.service';
 import { LibraryService } from '../library/library.service';
+import { KoreaderStorePhase2Service } from './koreader-store-phase2.service';
 
 const MAX_STORE_COVER_BYTES = 4 * 1024 * 1024;
 const STORE_COVER_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
@@ -23,18 +24,32 @@ export class KoreaderStoreService {
     private readonly catalogBrowse: HardcoverCatalogBrowseService,
     private readonly acquisitions: BookAcquisitionService,
     private readonly libraries: LibraryService,
+    private readonly phase2: KoreaderStorePhase2Service,
   ) {}
 
-  getHome(user: RequestUser, query: BrowseHomeDto) {
-    return this.catalogBrowse.getBrowseHome(user.id, query.hideRead);
+  async getHome(user: RequestUser, query: BrowseHomeDto) {
+    const home = await this.catalogBrowse.getBrowseHome(user.id, query.hideRead);
+    const allItems = [home.trending, ...home.genreShelves].flatMap((section) => section.items);
+    const enriched = await this.phase2.enrichResults(user, allItems);
+    let offset = 0;
+    const enrichSection = (section: (typeof home)['trending']) => {
+      const items = enriched.slice(offset, offset + section.items.length).filter((book) => !query.hideRead || !book.state.alreadyRead);
+      offset += section.items.length;
+      return { ...section, items };
+    };
+    return { ...home, trending: enrichSection(home.trending), genreShelves: home.genreShelves.map(enrichSection) };
   }
 
-  browse(user: RequestUser, query: BrowseExternalBooksDto) {
-    return this.catalogBrowse.browse(user.id, query);
+  async browse(user: RequestUser, query: BrowseExternalBooksDto) {
+    const response = await this.catalogBrowse.browse(user.id, query);
+    const items = await this.phase2.enrichResults(user, response.items);
+    return { ...response, items: items.filter((book) => !query.hideRead || !book.state.alreadyRead) };
   }
 
-  search(user: RequestUser, query: SearchExternalBooksDto) {
-    return this.discovery.search(user.id, query);
+  async search(user: RequestUser, query: SearchExternalBooksDto & { hideRead?: boolean }) {
+    const response = await this.discovery.search(user.id, query);
+    const results = await this.phase2.enrichResults(user, response.results);
+    return { ...response, results: results.filter((book) => query.hideRead === false || !book.state.alreadyRead) };
   }
 
   async getConfig(user: RequestUser): Promise<KoreaderStoreConfigResponse> {

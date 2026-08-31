@@ -46,25 +46,25 @@ def main() -> None:
         return
     if args.scenario == "bookorbit-menu":
         # The auto-opened BookOrbit dashboard owns the upper-left hamburger.
-        click(30, 45)
+        click(30, 32)
         return
     if args.scenario == "store-home":
         width = int(os.environ.get("KOREADER_EMULATOR_WIDTH", "758"))
         height = int(os.environ.get("KOREADER_EMULATOR_HEIGHT", "1024"))
-        click(round(width * 0.04), round(height * 0.044))
+        click(round(width * 0.04), round(height * 0.031))
         click(round(width * 0.50), round(height * 0.161), pause=3.0)
         return
     if args.scenario == "store-detail":
         width = int(os.environ.get("KOREADER_EMULATOR_WIDTH", "758"))
         height = int(os.environ.get("KOREADER_EMULATOR_HEIGHT", "1024"))
-        click(round(width * 0.04), round(height * 0.044))
+        click(round(width * 0.04), round(height * 0.031))
         click(round(width * 0.50), round(height * 0.161), pause=3.0)
         click(round(width * 0.17), round(height * 0.27), pause=2.0)
         return
     if args.scenario == "store-acquire":
         width = int(os.environ.get("KOREADER_EMULATOR_WIDTH", "758"))
         height = int(os.environ.get("KOREADER_EMULATOR_HEIGHT", "1024"))
-        click(round(width * 0.04), round(height * 0.044))
+        click(round(width * 0.04), round(height * 0.031))
         click(round(width * 0.50), round(height * 0.161), pause=3.0)
         click(round(width * 0.17), round(height * 0.27), pause=1.0)
         click(round(width * 0.25), round(height * 0.35), pause=2.0)
