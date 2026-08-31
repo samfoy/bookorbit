@@ -170,7 +170,10 @@ async function handleCancel(jobId: string) {
 
 <template>
   <main class="mx-auto w-full max-w-[96rem] space-y-6 pb-12">
-    <section class="relative isolate overflow-hidden rounded-3xl border border-border/70 bg-card px-5 py-8 shadow-sm sm:px-8 sm:py-10 lg:px-12">
+    <section
+      data-testid="discovery-mobile-shell"
+      class="relative isolate overflow-hidden rounded-2xl border border-border/70 bg-card px-4 py-5 shadow-sm sm:rounded-3xl sm:px-8 sm:py-10 lg:px-12"
+    >
       <div class="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-primary/10 blur-3xl" />
       <div class="pointer-events-none absolute -bottom-36 left-1/4 h-72 w-72 rounded-full bg-secondary/60 blur-3xl" />
       <div class="relative grid items-end gap-8 lg:grid-cols-[minmax(0,1fr)_auto]">
@@ -181,7 +184,7 @@ async function handleCancel(jobId: string) {
             <Sparkles :size="14" />
             {{ t('discovery.eyebrow') }}
           </div>
-          <h1 class="font-serif text-3xl font-semibold tracking-tight text-foreground sm:text-4xl lg:text-5xl">
+          <h1 data-testid="discovery-title" class="font-serif text-2xl font-semibold tracking-tight text-foreground sm:text-4xl lg:text-5xl">
             {{ t('discovery.title') }}
           </h1>
           <p class="mt-3 max-w-2xl text-sm leading-relaxed text-muted-foreground sm:text-base">
@@ -190,7 +193,7 @@ async function handleCancel(jobId: string) {
 
           <form
             data-testid="discovery-search-form"
-            class="mt-7 flex flex-col gap-3 rounded-2xl border border-border/80 bg-background/90 p-2 shadow-lg shadow-primary/5 backdrop-blur sm:flex-row"
+            class="mt-5 flex flex-col gap-3 rounded-2xl border border-border/80 bg-background/90 p-2 shadow-lg shadow-primary/5 backdrop-blur sm:mt-7 sm:flex-row"
             @submit.prevent="handleSearch"
           >
             <label class="flex min-w-0 flex-1 items-center gap-3 px-3" for="discovery-query">
@@ -206,31 +209,45 @@ async function handleCancel(jobId: string) {
                 class="h-11 min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-muted-foreground"
               />
             </label>
-            <Button type="submit" size="lg" class="h-11 rounded-xl px-6" :disabled="!canSearch">
+            <Button data-testid="discovery-submit" type="submit" size="lg" class="h-11 rounded-xl px-6" :disabled="!canSearch">
               <LoaderCircle v-if="searching" :size="17" class="animate-spin" />
               <Telescope v-else :size="17" />
               {{ searching ? t('discovery.search.searching') : t('discovery.search.submit') }}
             </Button>
           </form>
 
-          <div class="mt-4 flex flex-wrap items-center gap-2">
-            <span class="mr-1 text-xs font-medium text-muted-foreground">{{ t('discovery.search.searchIn') }}</span>
+          <div data-testid="discovery-controls" class="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="mr-1 text-xs font-medium text-muted-foreground">{{ t('discovery.search.searchIn') }}</span>
+              <button
+                v-for="source in ['hardcover', 'storygraph'] as ExternalCatalogSource[]"
+                :key="source"
+                data-testid="discovery-source-toggle"
+                type="button"
+                class="inline-flex min-h-11 items-center gap-1.5 rounded-full border px-3 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                :class="
+                  isSourceSelected(source)
+                    ? 'border-primary/30 bg-primary/10 text-primary'
+                    : 'border-border bg-background/60 text-muted-foreground hover:text-foreground'
+                "
+                :aria-pressed="isSourceSelected(source)"
+                @click="toggleSource(source)"
+              >
+                <Database v-if="source === 'hardcover'" :size="13" />
+                <ChartNoAxesColumnIncreasing v-else :size="13" />
+                {{ sourceLabel(source) }}
+              </button>
+            </div>
             <button
-              v-for="source in ['hardcover', 'storygraph'] as ExternalCatalogSource[]"
-              :key="source"
+              data-testid="toggle-hide-read"
               type="button"
-              class="inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              :class="
-                isSourceSelected(source)
-                  ? 'border-primary/30 bg-primary/10 text-primary'
-                  : 'border-border bg-background/60 text-muted-foreground hover:text-foreground'
-              "
-              :aria-pressed="isSourceSelected(source)"
-              @click="toggleSource(source)"
+              class="inline-flex min-h-11 shrink-0 items-center gap-2 self-start rounded-full border px-3.5 py-2 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:self-auto"
+              :class="hideRead ? 'border-primary/30 bg-primary/10 text-primary' : 'border-border bg-card text-muted-foreground hover:text-foreground'"
+              :aria-pressed="hideRead"
+              @click="handleToggleHideRead"
             >
-              <Database v-if="source === 'hardcover'" :size="13" />
-              <ChartNoAxesColumnIncreasing v-else :size="13" />
-              {{ sourceLabel(source) }}
+              <BookCheck :size="15" />
+              {{ hideRead ? t('discovery.browse.hidingRead') : t('discovery.browse.showingRead') }}
             </button>
           </div>
         </div>
@@ -242,20 +259,6 @@ async function handleCancel(jobId: string) {
         </div>
       </div>
     </section>
-
-    <div class="flex justify-end">
-      <button
-        data-testid="toggle-hide-read"
-        type="button"
-        class="inline-flex min-h-10 items-center gap-2 rounded-full border px-3.5 py-2 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        :class="hideRead ? 'border-primary/30 bg-primary/10 text-primary' : 'border-border bg-card text-muted-foreground hover:text-foreground'"
-        :aria-pressed="hideRead"
-        @click="handleToggleHideRead"
-      >
-        <BookCheck :size="15" />
-        {{ hideRead ? t('discovery.browse.hidingRead') : t('discovery.browse.showingRead') }}
-      </button>
-    </div>
 
     <AcquisitionQueue :jobs="jobs" @cancel="handleCancel" />
 
@@ -269,10 +272,11 @@ async function handleCancel(jobId: string) {
 
     <div
       v-if="browseError"
-      class="flex items-start gap-3 rounded-xl border border-destructive/25 bg-destructive/5 px-4 py-3 text-sm text-destructive"
+      data-testid="discovery-browse-error"
+      class="flex min-w-0 items-start gap-3 rounded-xl border border-destructive/25 bg-destructive/5 px-4 py-3 text-sm text-destructive"
     >
       <AlertCircle :size="17" class="mt-0.5 shrink-0" />
-      <p>{{ browseError }}</p>
+      <p class="min-w-0 break-words">{{ browseError }}</p>
     </div>
 
     <section v-if="sourceStatuses.length > 0" class="flex flex-wrap items-center gap-2" :aria-label="t('discovery.sources.statusLabel')">
@@ -290,19 +294,33 @@ async function handleCancel(jobId: string) {
     </section>
 
     <section v-if="activeBrowse" class="space-y-5">
-      <div class="flex flex-col gap-4 rounded-2xl border border-border/70 bg-card p-5 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <Button variant="ghost" size="sm" class="-ml-2 mb-2 gap-1.5 text-muted-foreground" @click="handleBackToBrowse">
+      <div
+        data-testid="discovery-browse-header"
+        class="flex min-w-0 flex-col gap-3 rounded-2xl border border-border/70 bg-card p-4 sm:flex-row sm:items-end sm:justify-between sm:gap-4 sm:p-5"
+      >
+        <div class="min-w-0">
+          <Button
+            data-testid="discovery-browse-back"
+            variant="ghost"
+            size="sm"
+            class="-ml-2 mb-1 min-h-11 gap-1.5 text-muted-foreground sm:mb-2"
+            @click="handleBackToBrowse"
+          >
             <ArrowLeft :size="15" />
             {{ t('discovery.browse.back') }}
           </Button>
-          <h2 class="font-serif text-3xl font-semibold tracking-tight">{{ activeBrowse.title }}</h2>
+          <h2 data-testid="discovery-browse-title" class="break-words font-serif text-2xl font-semibold tracking-tight sm:text-3xl">
+            {{ activeBrowse.title }}
+          </h2>
           <p v-if="activeBrowse.subtitle" class="mt-1 text-sm text-muted-foreground">{{ activeBrowse.subtitle }}</p>
         </div>
-        <Badge variant="secondary" class="w-fit tabular-nums">{{ activeBrowse.items.length }}</Badge>
+        <Badge data-testid="discovery-browse-count" variant="secondary" class="w-fit shrink-0 tabular-nums">{{ activeBrowse.items.length }}</Badge>
       </div>
 
-      <div class="grid grid-cols-1 gap-4 min-[480px]:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+      <div
+        data-testid="discovery-results-grid"
+        class="grid min-w-0 grid-cols-1 gap-4 min-[480px]:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5"
+      >
         <DiscoveryBookCard
           v-for="book in activeBrowse.items"
           :key="book.id"
@@ -315,8 +333,25 @@ async function handleCancel(jobId: string) {
         />
       </div>
 
-      <div v-if="activeBrowse.hasMore" class="flex justify-center pt-2">
-        <Button variant="outline" size="lg" class="min-w-44 gap-2" :disabled="browseMoreLoading" @click="handleLoadMoreBrowse">
+      <div
+        v-if="activeBrowse.items.length === 0"
+        data-testid="discovery-browse-empty"
+        class="flex min-w-0 flex-col items-center rounded-2xl border border-dashed border-border bg-card/40 px-4 py-10 text-center sm:px-6 sm:py-12"
+      >
+        <Search :size="25" class="text-muted-foreground" />
+        <h3 class="mt-3 font-serif text-xl font-semibold">{{ t('discovery.browse.emptyTitle') }}</h3>
+        <p class="mt-1 max-w-lg text-sm text-muted-foreground">{{ t('discovery.browse.emptyDescription') }}</p>
+      </div>
+
+      <div v-if="activeBrowse.hasMore" class="flex w-full justify-center pt-2">
+        <Button
+          data-testid="discovery-browse-load-more"
+          variant="outline"
+          size="lg"
+          class="min-h-11 w-full min-w-44 gap-2 sm:w-auto"
+          :disabled="browseMoreLoading"
+          @click="handleLoadMoreBrowse"
+        >
           <LoaderCircle v-if="browseMoreLoading" :size="16" class="animate-spin" />
           {{ browseMoreLoading ? t('discovery.browse.loadingMore') : t('discovery.browse.loadMore') }}
         </Button>
@@ -330,12 +365,15 @@ async function handleCancel(jobId: string) {
       <Button variant="outline" class="mt-5" @click="handleSearch">{{ t('discovery.error.retry') }}</Button>
     </div>
 
-    <section v-else-if="searching || (browseLoading && !hasSearched)" class="space-y-4" aria-live="polite">
+    <section v-else-if="searching || (browseLoading && !hasSearched)" data-testid="discovery-loading" class="min-w-0 space-y-4" aria-live="polite">
       <div class="flex items-center justify-between">
         <Skeleton class="h-6 w-40" />
         <Skeleton class="h-6 w-24 rounded-full" />
       </div>
-      <div class="grid grid-cols-1 gap-4 min-[480px]:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+      <div
+        data-testid="discovery-loading-grid"
+        class="grid min-w-0 grid-cols-1 gap-4 min-[480px]:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5"
+      >
         <div v-for="index in 10" :key="index" class="overflow-hidden rounded-2xl border border-border/70 bg-card">
           <Skeleton class="aspect-[2/3] w-full rounded-none" />
           <div class="space-y-3 p-4">
@@ -391,12 +429,16 @@ async function handleCancel(jobId: string) {
             <h2 class="mt-2 font-serif text-2xl font-semibold">{{ t('discovery.browse.byGenre') }}</h2>
             <p class="mt-1 text-sm leading-relaxed text-muted-foreground">{{ t('discovery.browse.genreDescription') }}</p>
           </div>
-          <div class="flex max-w-3xl flex-wrap gap-2">
+          <div
+            data-testid="discovery-genre-track"
+            class="flex w-full max-w-3xl snap-x snap-mandatory flex-nowrap gap-2 overflow-x-auto overscroll-x-contain pb-1 [scrollbar-width:thin] lg:w-auto lg:flex-wrap lg:overflow-visible lg:pb-0"
+          >
             <button
               v-for="genre in browseHome.genres"
               :key="genre.slug"
+              data-testid="discovery-genre"
               type="button"
-              class="rounded-full border border-border bg-background px-3 py-1.5 text-xs font-semibold text-muted-foreground transition hover:border-primary/35 hover:bg-primary/5 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              class="min-h-11 shrink-0 snap-start rounded-full border border-border bg-background px-3 py-1.5 text-xs font-semibold text-muted-foreground transition hover:border-primary/35 hover:bg-primary/5 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               @click="handleBrowseGenre(genre.slug)"
             >
               {{ genre.name }}

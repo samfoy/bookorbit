@@ -7438,6 +7438,8 @@
       "back": "Back to discovery",
       "loadMore": "Load more books",
       "loadingMore": "Loading more",
+      "emptyTitle": "No books in this view",
+      "emptyDescription": "Try another genre, author, or similar-book path, or show books you have already read.",
       "hidingRead": "Hiding books you've read",
       "showingRead": "Showing books you've read"
     },
