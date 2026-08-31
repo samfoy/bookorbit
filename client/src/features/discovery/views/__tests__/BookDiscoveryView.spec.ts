@@ -25,11 +25,48 @@ describe('BookDiscoveryView', () => {
     apiMock.mockImplementation(async (input) => {
       const url = String(input)
       if (url === '/api/v1/libraries') return response([])
+      if (url.endsWith('/browse/home')) {
+        return response({
+          generatedAt: '2026-08-31T00:00:00.000Z',
+          trending: { id: 'trending', title: 'Trending this week', subtitle: null, kind: 'trending', value: null, items: [] },
+          genreShelves: [],
+          genres: [{ name: 'Fantasy', slug: 'fantasy' }],
+        })
+      }
+      if (url.includes('/browse?')) {
+        return response({
+          id: 'genre-fantasy',
+          title: 'Fantasy books',
+          subtitle: null,
+          kind: 'genre',
+          value: 'fantasy',
+          items: [],
+          page: 1,
+          pageSize: 20,
+          hasMore: false,
+        })
+      }
       if (url.endsWith('/acquisition-sources')) return response([])
       if (url.endsWith('/acquisitions')) return response([])
       if (url.includes('/search?')) return response({ results: [], sources: [] })
       throw new Error(`Unexpected request: ${url}`)
     })
+  })
+
+  it('loads browse shelves without requiring a search', async () => {
+    const wrapper = mount(BookDiscoveryView, {
+      global: {
+        stubs: {
+          RouterLink: { template: '<a><slot /></a>' },
+          AcquisitionSheet: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Explore by genre')
+    expect(wrapper.text()).toContain('Trending this week')
+    expect(wrapper.text()).toContain('Fantasy')
   })
 
   it('does not request acquisition-only state without upload permission', async () => {

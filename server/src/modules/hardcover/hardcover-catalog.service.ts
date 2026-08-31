@@ -33,13 +33,14 @@ query CatalogEditions($ids: [Int!]!) {
   }
 }`;
 
-interface HardcoverSearchDocument {
+export interface HardcoverCatalogRow {
   id?: string | number;
   slug?: string | null;
   title?: string | null;
   description?: string | null;
   author_names?: unknown;
   contributions?: unknown;
+  cached_contributors?: unknown;
   image?: { url?: string | null } | null;
   isbns?: unknown;
   pages?: number | null;
@@ -47,6 +48,10 @@ interface HardcoverSearchDocument {
   ratings_count?: number | null;
   release_year?: number | null;
   has_ebook?: boolean | null;
+  cached_tags?: unknown;
+  cached_featured_series?: unknown;
+  default_ebook_edition?: HardcoverDefaultEdition | null;
+  default_physical_edition?: HardcoverDefaultEdition | null;
   featured_series?: {
     position?: number | null;
     series?: { name?: string | null } | null;
@@ -56,7 +61,7 @@ interface HardcoverSearchDocument {
 interface HardcoverSearchResponse {
   search?: {
     results?: {
-      hits?: Array<{ document?: HardcoverSearchDocument | null }>;
+      hits?: Array<{ document?: HardcoverCatalogRow | null }>;
     } | null;
   } | null;
 }
@@ -95,20 +100,25 @@ export class HardcoverCatalogService {
       ids.length > 0 ? await this.client.query<HardcoverEditionsResponse>(userId, token, CATALOG_EDITIONS_QUERY, { ids }) : { books: [] };
     const editionsByBookId = new Map((editionResponse.books ?? []).map((book) => [String(book.id), book]));
 
-    return documents
-      .map((document) => this.mapDocument(document, editionsByBookId.get(String(document.id))))
+    return this.mapCatalogRows(documents, editionsByBookId);
+  }
+
+  mapCatalogRows(rows: HardcoverCatalogRow[], editionsByBookId = new Map<string, HardcoverBookEditions>()): ExternalBookSearchResult[] {
+    return rows
+      .map((row) => this.mapDocument(row, editionsByBookId.get(String(row.id))))
       .filter((book): book is ExternalBookSearchResult => book !== null);
   }
 
-  private mapDocument(document: HardcoverSearchDocument | null | undefined, editions?: HardcoverBookEditions): ExternalBookSearchResult | null {
+  private mapDocument(document: HardcoverCatalogRow | null | undefined, editions?: HardcoverBookEditions): ExternalBookSearchResult | null {
     if (!document) return null;
     const externalId = document.id == null ? '' : String(document.id);
     const title = document.title?.trim() ?? '';
     if (!externalId || !title) return null;
 
     const slug = document.slug?.trim();
-    const ebookEdition = editions?.default_ebook_edition;
-    const physicalEdition = editions?.default_physical_edition;
+    const ebookEdition = editions?.default_ebook_edition ?? document.default_ebook_edition;
+    const physicalEdition = editions?.default_physical_edition ?? document.default_physical_edition;
+    const featuredSeries = this.resolveFeaturedSeries(document);
 
     return {
       id: `hardcover:${externalId}`,
@@ -122,9 +132,10 @@ export class HardcoverCatalogService {
       isbn10: this.normalizeIsbn(ebookEdition?.isbn_10, 10) ?? this.normalizeIsbn(physicalEdition?.isbn_10, 10),
       isbn13: this.normalizeIsbn(ebookEdition?.isbn_13, 13) ?? this.normalizeIsbn(physicalEdition?.isbn_13, 13),
       pageCount: this.positiveInteger(document.pages) ?? this.positiveInteger(physicalEdition?.pages) ?? this.positiveInteger(ebookEdition?.pages),
-      seriesName: document.featured_series?.series?.name?.trim() || null,
-      seriesPosition: this.finiteNumber(document.featured_series?.position),
-      hasEbook: typeof document.has_ebook === 'boolean' ? document.has_ebook : null,
+      seriesName: featuredSeries.name,
+      seriesPosition: featuredSeries.position,
+      hasEbook: typeof document.has_ebook === 'boolean' ? document.has_ebook : Boolean(ebookEdition),
+      genres: this.resolveGenres(document.cached_tags),
       sources: [
         {
           source: 'hardcover',
@@ -135,13 +146,14 @@ export class HardcoverCatalogService {
     };
   }
 
-  private resolveAuthors(document: HardcoverSearchDocument): string[] {
-    if (Array.isArray(document.contributions)) {
-      const primaryAuthors = document.contributions
+  private resolveAuthors(document: HardcoverCatalogRow): string[] {
+    const contributions = Array.isArray(document.contributions) ? document.contributions : document.cached_contributors;
+    if (Array.isArray(contributions)) {
+      const primaryAuthors = contributions
         .filter(
           (entry): entry is { primary?: boolean; contribution?: string; author?: { name?: string } } => typeof entry === 'object' && entry !== null,
         )
-        .filter((entry) => entry.primary === true && entry.contribution?.toLowerCase() === 'author')
+        .filter((entry) => (entry.primary === true && entry.contribution?.toLowerCase() === 'author') || entry.contribution == null)
         .map((entry) => entry.author?.name?.trim() ?? '')
         .filter(Boolean);
       if (primaryAuthors.length > 0) return primaryAuthors;
@@ -150,6 +162,17 @@ export class HardcoverCatalogService {
     return Array.isArray(document.author_names)
       ? document.author_names.map((author) => (typeof author === 'string' ? author.trim() : '')).filter(Boolean)
       : [];
+  }
+
+  private resolveFeaturedSeries(document: HardcoverCatalogRow): { name: string | null; position: number | null } {
+    const source = document.featured_series ?? document.cached_featured_series;
+    if (typeof source !== 'object' || source === null) return { name: null, position: null };
+    const record = source as { position?: unknown; series?: { name?: unknown }; name?: unknown };
+    const nameValue = record.series?.name ?? record.name;
+    return {
+      name: typeof nameValue === 'string' && nameValue.trim() ? nameValue.trim() : null,
+      position: this.finiteNumber(record.position),
+    };
   }
 
   private finiteNumber(value: unknown): number | null {
@@ -167,5 +190,17 @@ export class HardcoverCatalogService {
   private normalizeIsbn(value: string | null | undefined, length: 10 | 13): string | null {
     const normalized = value?.replace(/[^0-9X]/gi, '') ?? '';
     return normalized.length === length ? normalized : null;
+  }
+
+  private resolveGenres(cachedTags: unknown): Array<{ name: string; slug: string }> {
+    if (typeof cachedTags !== 'object' || cachedTags === null) return [];
+    const genres = (cachedTags as { Genre?: unknown }).Genre;
+    if (!Array.isArray(genres)) return [];
+    return genres.flatMap((entry) => {
+      if (typeof entry !== 'object' || entry === null) return [];
+      const name = 'tag' in entry && typeof entry.tag === 'string' ? entry.tag.trim() : '';
+      const slug = 'tagSlug' in entry && typeof entry.tagSlug === 'string' ? entry.tagSlug.trim() : '';
+      return name && slug ? [{ name, slug }] : [];
+    });
   }
 }

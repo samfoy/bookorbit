@@ -3,9 +3,17 @@ import { validate } from 'class-validator';
 import { describe, expect, it } from 'vitest';
 
 import { CreateBookAcquisitionDto } from './create-book-acquisition.dto';
+import { BrowseExternalBooksDto } from './browse-external-books.dto';
 import { SearchExternalBooksDto } from './search-external-books.dto';
 
 describe('book discovery DTOs', () => {
+  it('transforms bounded browse pagination', async () => {
+    const dto = plainToInstance(BrowseExternalBooksDto, { kind: 'genre', value: ' fantasy ', page: '2', pageSize: '24' });
+
+    expect(await validate(dto)).toEqual([]);
+    expect(dto).toMatchObject({ kind: 'genre', value: 'fantasy', page: 2, pageSize: 24 });
+  });
+
   it('trims the query and deduplicates repeated catalog sources', async () => {
     const dto = plainToInstance(SearchExternalBooksDto, {
       query: '  Piranesi  ',

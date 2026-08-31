@@ -16,6 +16,10 @@ Active fork implementation. The branch already contains substantial, verified Bo
 | Preserve downloader safety checks                                            | Done          | ISBN-first lookup, wrong-title/volume, bundle, exact-author-token, corrupt EPUB, size ceiling, redirect safety, and UploadService collision behavior are covered |
 | Keep new acquisitions correct on CrossInk/Xteink devices                     | Done          | Full-stack served EPUB contained a 2,227-byte `META-INF/x-locations.json` manifest with 974 locations; fragmented-spine regression passes                        |
 | Enforce multi-user permissions and library access                            | Done          | Backend upload permission, library access, user-scoped jobs, cancellation boundaries, and per-user/global concurrency caps are tested                            |
+| Browse without entering a search                                             | Done          | Weekly trending and genre shelves load from Hardcover on page entry; desktop and 390 px browser QA pass                                                          |
+| Browse authors, genres, and similar books                                    | Done          | Live paginated Science Fiction, Ursula K. Le Guin, and Piranesi-similar provider calls return ranked books                                                       |
+| See more than one result page                                                | Done          | Bounded 6-40 item pages expose `hasMore`; the client appends and deduplicates pages through a Load more action                                                   |
+| Acquire from every discovery surface                                         | Done          | Search, shelf, genre, author, trending, and similar cards all open the same verified acquisition sheet and job pipeline                                          |
 
 ## Ownership gate
 
@@ -28,7 +32,7 @@ Active fork implementation. The branch already contains substantial, verified Bo
 
 ## Active slice
 
-Complete. All original criteria have implementation evidence and bounded verification.
+Complete. Search, browse, pagination, provider pivots, and acquisition share one verified feature boundary.
 
 ## Verification boundary
 

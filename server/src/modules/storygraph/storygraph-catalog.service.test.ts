@@ -60,6 +60,7 @@ describe('StorygraphCatalogService', () => {
         seriesName: null,
         seriesPosition: null,
         hasEbook: null,
+        genres: [],
         sources: [
           {
             source: 'storygraph',

@@ -17,7 +17,7 @@ function makeController() {
     getCapabilities: vi.fn(),
   };
   return {
-    controller: new BookDiscoveryController(discovery as never, acquisitions as never),
+    controller: new BookDiscoveryController(discovery as never, acquisitions as never, {} as never),
     acquisitions,
   };
 }

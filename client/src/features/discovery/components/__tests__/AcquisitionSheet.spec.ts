@@ -19,6 +19,7 @@ const book: ExternalBookSearchResult = {
   seriesName: null,
   seriesPosition: null,
   hasEbook: true,
+  genres: [{ name: 'Fantasy', slug: 'fantasy' }],
   sources: [{ source: 'hardcover', externalId: '1', url: 'https://hardcover.app/books/piranesi' }],
 }
 

@@ -2,6 +2,9 @@ import type {
   BookAcquisitionJob,
   BookAcquisitionSource,
   BookAcquisitionSourceCapability,
+  DiscoveryBrowseHomeResponse,
+  DiscoveryBrowseKind,
+  DiscoveryBrowseResponse,
   ExternalBookSearchResult,
   ExternalCatalogSource,
   ExternalCatalogSourceStatus,
@@ -12,6 +15,8 @@ import {
   cancelBookAcquisition,
   fetchAcquisitionSources,
   fetchBookAcquisitions,
+  fetchDiscoveryBrowse,
+  fetchDiscoveryBrowseHome,
   searchExternalBooks,
   startBookAcquisition,
 } from '../api/book-discovery.api'
@@ -23,6 +28,7 @@ interface AcquireBookOptions {
 }
 
 const ACTIVE_JOB_STATUSES = new Set(['queued', 'downloading', 'optimizing', 'importing'])
+const BROWSE_PAGE_SIZE = 20
 
 export function useBookDiscovery() {
   const query = ref('')
@@ -32,6 +38,11 @@ export function useBookDiscovery() {
   const searching = ref(false)
   const hasSearched = ref(false)
   const error = ref<string | null>(null)
+  const browseHome = ref<DiscoveryBrowseHomeResponse | null>(null)
+  const activeBrowse = ref<DiscoveryBrowseResponse | null>(null)
+  const browseLoading = ref(false)
+  const browseMoreLoading = ref(false)
+  const browseError = ref<string | null>(null)
 
   const acquisitionSources = ref<BookAcquisitionSourceCapability[]>([])
   const jobs = ref<BookAcquisitionJob[]>([])
@@ -45,6 +56,8 @@ export function useBookDiscovery() {
     if (normalizedQuery.length < 2 || selectedSources.value.length === 0) return
 
     searching.value = true
+    activeBrowse.value = null
+    browseError.value = null
     error.value = null
     try {
       const response = await searchExternalBooks(normalizedQuery, [...selectedSources.value])
@@ -59,6 +72,55 @@ export function useBookDiscovery() {
     } finally {
       searching.value = false
     }
+  }
+
+  async function loadBrowseHome(): Promise<void> {
+    browseLoading.value = true
+    browseError.value = null
+    try {
+      browseHome.value = await fetchDiscoveryBrowseHome()
+    } catch (cause) {
+      browseError.value = errorMessage(cause, 'Failed to load book discovery')
+    } finally {
+      browseLoading.value = false
+    }
+  }
+
+  async function openBrowse(kind: DiscoveryBrowseKind, value: string | null = null): Promise<void> {
+    browseLoading.value = true
+    browseError.value = null
+    activeBrowse.value = null
+    hasSearched.value = false
+    results.value = []
+    sourceStatuses.value = []
+    try {
+      activeBrowse.value = await fetchDiscoveryBrowse(kind, value, 1, BROWSE_PAGE_SIZE)
+    } catch (cause) {
+      browseError.value = errorMessage(cause, 'Failed to browse external books')
+    } finally {
+      browseLoading.value = false
+    }
+  }
+
+  async function loadMoreBrowse(): Promise<void> {
+    const current = activeBrowse.value
+    if (!current?.hasMore || browseMoreLoading.value) return
+    browseMoreLoading.value = true
+    browseError.value = null
+    try {
+      const next = await fetchDiscoveryBrowse(current.kind, current.value, current.page + 1, current.pageSize)
+      const seen = new Set(current.items.map((book) => book.id))
+      activeBrowse.value = { ...next, items: [...current.items, ...next.items.filter((book) => !seen.has(book.id))] }
+    } catch (cause) {
+      browseError.value = errorMessage(cause, 'Failed to load more books')
+    } finally {
+      browseMoreLoading.value = false
+    }
+  }
+
+  function closeBrowse(): void {
+    activeBrowse.value = null
+    browseError.value = null
   }
 
   function toggleSource(source: ExternalCatalogSource): void {
@@ -116,12 +178,21 @@ export function useBookDiscovery() {
     searching,
     hasSearched,
     error,
+    browseHome,
+    activeBrowse,
+    browseLoading,
+    browseMoreLoading,
+    browseError,
     acquisitionSources,
     jobs,
     acquisitionLoading,
     acquisitionError,
     hasActiveJobs,
     search,
+    loadBrowseHome,
+    openBrowse,
+    loadMoreBrowse,
+    closeBrowse,
     toggleSource,
     loadAcquisitionState,
     acquire,

@@ -2,6 +2,9 @@ import type {
   BookAcquisitionJob,
   BookAcquisitionSourceCapability,
   CreateBookAcquisitionRequest,
+  DiscoveryBrowseHomeResponse,
+  DiscoveryBrowseKind,
+  DiscoveryBrowseResponse,
   ExternalBookSearchResponse,
   ExternalCatalogSource,
 } from '@bookorbit/types'
@@ -13,6 +16,25 @@ export async function searchExternalBooks(query: string, sources: ExternalCatalo
   const params = new URLSearchParams({ query, sources: sources.join(',') })
   const response = await api(`${BASE}/search?${params.toString()}`)
   return readJson<ExternalBookSearchResponse>(response, 'Failed to search external catalogs')
+}
+
+export async function fetchDiscoveryBrowseHome(): Promise<DiscoveryBrowseHomeResponse> {
+  const response = await api(`${BASE}/browse/home`)
+  return readJson<DiscoveryBrowseHomeResponse>(response, 'Failed to load book discovery')
+}
+
+export async function fetchDiscoveryBrowse(
+  kind: DiscoveryBrowseKind,
+  value: string | null,
+  page: number,
+  pageSize: number,
+): Promise<DiscoveryBrowseResponse> {
+  const params = new URLSearchParams({ kind })
+  if (value) params.set('value', value)
+  params.set('page', String(page))
+  params.set('pageSize', String(pageSize))
+  const response = await api(`${BASE}/browse?${params.toString()}`)
+  return readJson<DiscoveryBrowseResponse>(response, 'Failed to browse external books')
 }
 
 export async function fetchAcquisitionSources(): Promise<BookAcquisitionSourceCapability[]> {

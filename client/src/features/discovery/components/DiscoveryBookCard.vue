@@ -2,7 +2,7 @@
 import type { ExternalBookSearchResult } from '@bookorbit/types'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { BookOpen, Download, ExternalLink, Star } from '@lucide/vue'
+import { BookOpen, Download, ExternalLink, Sparkles, Star } from '@lucide/vue'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -14,12 +14,16 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   acquire: [book: ExternalBookSearchResult]
+  'browse-author': [author: string]
+  'browse-genre': [genre: string]
+  'browse-similar': [hardcoverId: string]
 }>()
 
 const { t } = useI18n()
 
 const authorLine = computed(() => props.book.authors.join(', ') || t('discovery.card.unknownAuthor'))
 const ratingLabel = computed(() => (props.book.rating === null ? null : props.book.rating.toFixed(1)))
+const hardcoverId = computed(() => props.book.sources.find((source) => source.source === 'hardcover')?.externalId ?? null)
 
 function sourceLabel(source: 'hardcover' | 'storygraph'): string {
   return t(`discovery.sources.${source}`)
@@ -27,6 +31,15 @@ function sourceLabel(source: 'hardcover' | 'storygraph'): string {
 
 function handleAcquire() {
   emit('acquire', props.book)
+}
+
+function handleBrowseAuthor() {
+  const author = props.book.authors[0]
+  if (author) emit('browse-author', author)
+}
+
+function handleBrowseSimilar() {
+  if (hardcoverId.value) emit('browse-similar', hardcoverId.value)
 }
 </script>
 
@@ -68,7 +81,28 @@ function handleAcquire() {
         <h2 class="line-clamp-2 font-serif text-lg font-semibold leading-tight text-card-foreground" :title="book.title">
           {{ book.title }}
         </h2>
-        <p class="mt-1 line-clamp-1 text-sm text-muted-foreground" :title="authorLine">{{ authorLine }}</p>
+        <button
+          data-testid="browse-author"
+          type="button"
+          class="mt-1 line-clamp-1 text-left text-sm text-muted-foreground transition-colors hover:text-primary hover:underline"
+          :title="authorLine"
+          @click="handleBrowseAuthor"
+        >
+          {{ authorLine }}
+        </button>
+      </div>
+
+      <div v-if="book.genres.length > 0" class="mt-2 flex flex-wrap gap-1.5">
+        <button
+          v-for="genre in book.genres.slice(0, 2)"
+          :key="genre.slug"
+          data-testid="browse-genre"
+          type="button"
+          class="rounded-full border border-border/70 bg-muted/60 px-2 py-0.5 text-[10px] font-medium text-muted-foreground transition-colors hover:border-primary/30 hover:text-primary"
+          @click="emit('browse-genre', genre.slug)"
+        >
+          {{ genre.name }}
+        </button>
       </div>
 
       <div class="mt-3 flex min-h-6 flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
@@ -102,6 +136,18 @@ function handleAcquire() {
             class="text-muted-foreground hover:text-foreground"
           >
             <ExternalLink :size="14" />
+          </Button>
+          <Button
+            v-if="hardcoverId"
+            data-testid="browse-similar"
+            variant="ghost"
+            size="icon-sm"
+            class="text-muted-foreground"
+            :aria-label="t('discovery.card.similar')"
+            :title="t('discovery.card.similar')"
+            @click="handleBrowseSimilar"
+          >
+            <Sparkles :size="14" />
           </Button>
         </div>
 

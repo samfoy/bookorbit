@@ -22,7 +22,13 @@ export interface ExternalBookSearchResult {
   seriesName: string | null;
   seriesPosition: number | null;
   hasEbook: boolean | null;
+  genres: ExternalBookGenre[];
   sources: ExternalBookSourceLink[];
+}
+
+export interface ExternalBookGenre {
+  name: string;
+  slug: string;
 }
 
 export interface ExternalBookSearchRequest {
@@ -41,6 +47,31 @@ export interface ExternalCatalogSourceStatus {
 export interface ExternalBookSearchResponse {
   results: ExternalBookSearchResult[];
   sources: ExternalCatalogSourceStatus[];
+}
+
+export const DISCOVERY_BROWSE_KINDS = ["trending", "genre", "author", "similar"] as const;
+export type DiscoveryBrowseKind = (typeof DISCOVERY_BROWSE_KINDS)[number];
+
+export interface DiscoveryBrowseSection {
+  id: string;
+  title: string;
+  subtitle: string | null;
+  kind: DiscoveryBrowseKind;
+  value: string | null;
+  items: ExternalBookSearchResult[];
+}
+
+export interface DiscoveryBrowseHomeResponse {
+  generatedAt: string;
+  trending: DiscoveryBrowseSection;
+  genreShelves: DiscoveryBrowseSection[];
+  genres: ExternalBookGenre[];
+}
+
+export interface DiscoveryBrowseResponse extends DiscoveryBrowseSection {
+  page: number;
+  pageSize: number;
+  hasMore: boolean;
 }
 
 export const BOOK_ACQUISITION_SOURCES = ["auto", "libgen", "annas_archive"] as const;

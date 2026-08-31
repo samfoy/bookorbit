@@ -19,6 +19,7 @@ const book: ExternalBookSearchResult = {
   seriesName: null,
   seriesPosition: null,
   hasEbook: true,
+  genres: [{ name: 'Fantasy', slug: 'fantasy' }],
   sources: [
     { source: 'hardcover', externalId: '1', url: 'https://hardcover.app/books/piranesi' },
     { source: 'storygraph', externalId: 'piranesi', url: 'https://app.thestorygraph.com/books/piranesi' },
@@ -32,6 +33,13 @@ describe('DiscoveryBookCard', () => {
     expect(wrapper.text()).toContain('Piranesi')
     expect(wrapper.text()).toContain('Susanna Clarke')
     expect(wrapper.findAll('[data-source-badge]')).toHaveLength(2)
+
+    await wrapper.get('[data-testid="browse-author"]').trigger('click')
+    await wrapper.get('[data-testid="browse-genre"]').trigger('click')
+    await wrapper.get('[data-testid="browse-similar"]').trigger('click')
+    expect(wrapper.emitted('browse-author')).toEqual([['Susanna Clarke']])
+    expect(wrapper.emitted('browse-genre')).toEqual([['fantasy']])
+    expect(wrapper.emitted('browse-similar')).toEqual([['1']])
 
     await wrapper.get('[data-testid="acquire-book"]').trigger('click')
     expect(wrapper.emitted('acquire')).toEqual([[book]])

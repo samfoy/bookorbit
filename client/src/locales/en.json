@@ -7407,7 +7407,7 @@
   "discovery": {
     "eyebrow": "Search beyond your shelves",
     "title": "Find your next book",
-    "subtitle": "Search Hardcover and StoryGraph together, compare editions, and bring a verified EPUB into BookOrbit without leaving the app.",
+    "subtitle": "Browse what is trending, explore genres and authors, find similar books, or search both catalogs. Add a verified EPUB without leaving BookOrbit.",
     "search": {
       "label": "Search external book catalogs",
       "placeholder": "Title, author, or ISBN",
@@ -7427,7 +7427,17 @@
       "noCover": "No cover available",
       "pages": "{count} pages",
       "openSource": "Open on {source}",
-      "acquire": "Get book"
+      "acquire": "Get book",
+      "similar": "Similar"
+    },
+    "browse": {
+      "explore": "Browse the catalog",
+      "byGenre": "Explore by genre",
+      "genreDescription": "Open a genre for a continuously updated, paginated catalog, or browse the shelves below for what is trending this week.",
+      "viewAll": "View all",
+      "back": "Back to discovery",
+      "loadMore": "Load more books",
+      "loadingMore": "Loading more"
     },
     "acquire": {
       "title": "Add to your library",

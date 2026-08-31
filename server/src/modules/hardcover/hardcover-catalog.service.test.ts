@@ -44,6 +44,9 @@ describe('HardcoverCatalogService', () => {
                   ratings_count: 6436,
                   release_year: 1965,
                   has_ebook: true,
+                  cached_tags: {
+                    Genre: [{ tag: 'Science Fiction', tagSlug: 'science-fiction' }],
+                  },
                   featured_series: { position: 1, series: { name: 'Dune' } },
                 },
               },
@@ -94,6 +97,7 @@ describe('HardcoverCatalogService', () => {
         seriesName: 'Dune',
         seriesPosition: 1,
         hasEbook: true,
+        genres: [{ name: 'Science Fiction', slug: 'science-fiction' }],
         sources: [
           {
             source: 'hardcover',

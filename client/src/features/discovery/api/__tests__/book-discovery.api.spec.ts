@@ -13,6 +13,8 @@ import {
   fetchAcquisitionSources,
   fetchBookAcquisition,
   fetchBookAcquisitions,
+  fetchDiscoveryBrowse,
+  fetchDiscoveryBrowseHome,
   searchExternalBooks,
   startBookAcquisition,
 } from '../book-discovery.api'
@@ -38,6 +40,16 @@ describe('book-discovery.api', () => {
     await expect(searchExternalBooks('A Psalm & a Wild-Built', ['hardcover', 'storygraph'])).resolves.toEqual({ results: [], sources: [] })
 
     expect(mockApi).toHaveBeenCalledWith('/api/v1/discovery/search?query=A+Psalm+%26+a+Wild-Built&sources=hardcover%2Cstorygraph')
+  })
+
+  it('loads browse home and URL-safe paginated browse modes', async () => {
+    mockApi.mockResolvedValueOnce(jsonResponse({ genreShelves: [] })).mockResolvedValueOnce(jsonResponse({ items: [], page: 2 }))
+
+    await fetchDiscoveryBrowseHome()
+    await fetchDiscoveryBrowse('author', 'Ursula K. Le Guin', 2, 20)
+
+    expect(mockApi).toHaveBeenNthCalledWith(1, '/api/v1/discovery/browse/home')
+    expect(mockApi).toHaveBeenNthCalledWith(2, '/api/v1/discovery/browse?kind=author&value=Ursula+K.+Le+Guin&page=2&pageSize=20')
   })
 
   it('starts an acquisition with the exact backend DTO shape', async () => {

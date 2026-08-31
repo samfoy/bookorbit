@@ -18,6 +18,7 @@ const hardcoverBook: ExternalBookSearchResult = {
   seriesName: null,
   seriesPosition: null,
   hasEbook: true,
+  genres: [{ name: 'Fantasy', slug: 'fantasy' }],
   sources: [{ source: 'hardcover', externalId: '1', url: 'https://hardcover.app/books/piranesi' }],
 };
 
@@ -36,6 +37,7 @@ const storygraphBook: ExternalBookSearchResult = {
   seriesName: null,
   seriesPosition: null,
   hasEbook: null,
+  genres: [],
   sources: [{ source: 'storygraph', externalId: 'piranesi', url: 'https://app.thestorygraph.com/books/piranesi' }],
 };
 

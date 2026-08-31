@@ -1,9 +1,20 @@
 <script setup lang="ts">
-import type { BookAcquisitionSource, ExternalBookSearchResult, ExternalCatalogSource } from '@bookorbit/types'
+import type { BookAcquisitionSource, DiscoveryBrowseKind, ExternalBookSearchResult, ExternalCatalogSource } from '@bookorbit/types'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { toast } from 'vue-sonner'
-import { AlertCircle, BookOpen, ChartNoAxesColumnIncreasing, Database, LoaderCircle, Search, Sparkles, Telescope } from '@lucide/vue'
+import {
+  AlertCircle,
+  ArrowLeft,
+  BookOpen,
+  ChartNoAxesColumnIncreasing,
+  Database,
+  Flame,
+  LoaderCircle,
+  Search,
+  Sparkles,
+  Telescope,
+} from '@lucide/vue'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -13,6 +24,7 @@ import { useLibraries } from '@/features/library/composables/useLibraries'
 import AcquisitionQueue from '../components/AcquisitionQueue.vue'
 import AcquisitionSheet from '../components/AcquisitionSheet.vue'
 import DiscoveryBookCard from '../components/DiscoveryBookCard.vue'
+import DiscoveryShelf from '../components/DiscoveryShelf.vue'
 import { useBookDiscovery } from '../composables/useBookDiscovery'
 
 defineOptions({ name: 'BookDiscoveryView' })
@@ -28,11 +40,20 @@ const {
   searching,
   hasSearched,
   error,
+  browseHome,
+  activeBrowse,
+  browseLoading,
+  browseMoreLoading,
+  browseError,
   acquisitionSources,
   jobs,
   acquisitionError,
   hasActiveJobs,
   search,
+  loadBrowseHome,
+  openBrowse,
+  loadMoreBrowse,
+  closeBrowse,
   toggleSource,
   loadAcquisitionState,
   acquire,
@@ -50,6 +71,7 @@ const canSearch = computed(() => query.value.trim().length >= 2 && selectedSourc
 const resultSummary = computed(() => t('discovery.results.count', { count: results.value.length }))
 
 onMounted(() => {
+  void loadBrowseHome()
   if (hasPermission('library_upload')) void Promise.all([fetchLibraries(), loadAcquisitionState()])
 })
 
@@ -84,6 +106,30 @@ function handleSearch() {
 function handleAcquire(book: ExternalBookSearchResult) {
   selectedBook.value = book
   acquisitionOpen.value = true
+}
+
+function handleOpenBrowse(kind: DiscoveryBrowseKind, value: string | null) {
+  void openBrowse(kind, value)
+}
+
+function handleBrowseAuthor(author: string) {
+  void openBrowse('author', author)
+}
+
+function handleBrowseGenre(genre: string) {
+  void openBrowse('genre', genre)
+}
+
+function handleBrowseSimilar(hardcoverId: string) {
+  void openBrowse('similar', hardcoverId)
+}
+
+function handleBackToBrowse() {
+  closeBrowse()
+}
+
+function handleLoadMoreBrowse() {
+  void loadMoreBrowse()
 }
 
 function handleAcquisitionOpen(open: boolean) {
@@ -200,6 +246,14 @@ async function handleCancel(jobId: string) {
       <p>{{ acquisitionError }}</p>
     </div>
 
+    <div
+      v-if="browseError"
+      class="flex items-start gap-3 rounded-xl border border-destructive/25 bg-destructive/5 px-4 py-3 text-sm text-destructive"
+    >
+      <AlertCircle :size="17" class="mt-0.5 shrink-0" />
+      <p>{{ browseError }}</p>
+    </div>
+
     <section v-if="sourceStatuses.length > 0" class="flex flex-wrap items-center gap-2" :aria-label="t('discovery.sources.statusLabel')">
       <div
         v-for="status in sourceStatuses"
@@ -214,14 +268,48 @@ async function handleCancel(jobId: string) {
       </div>
     </section>
 
-    <div v-if="error" class="flex flex-col items-center rounded-2xl border border-destructive/25 bg-destructive/5 px-6 py-12 text-center">
+    <section v-if="activeBrowse" class="space-y-5">
+      <div class="flex flex-col gap-4 rounded-2xl border border-border/70 bg-card p-5 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <Button variant="ghost" size="sm" class="-ml-2 mb-2 gap-1.5 text-muted-foreground" @click="handleBackToBrowse">
+            <ArrowLeft :size="15" />
+            {{ t('discovery.browse.back') }}
+          </Button>
+          <h2 class="font-serif text-3xl font-semibold tracking-tight">{{ activeBrowse.title }}</h2>
+          <p v-if="activeBrowse.subtitle" class="mt-1 text-sm text-muted-foreground">{{ activeBrowse.subtitle }}</p>
+        </div>
+        <Badge variant="secondary" class="w-fit tabular-nums">{{ activeBrowse.items.length }}</Badge>
+      </div>
+
+      <div class="grid grid-cols-1 gap-4 min-[480px]:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+        <DiscoveryBookCard
+          v-for="book in activeBrowse.items"
+          :key="book.id"
+          :book="book"
+          :can-acquire="canAcquire"
+          @acquire="handleAcquire"
+          @browse-author="handleBrowseAuthor"
+          @browse-genre="handleBrowseGenre"
+          @browse-similar="handleBrowseSimilar"
+        />
+      </div>
+
+      <div v-if="activeBrowse.hasMore" class="flex justify-center pt-2">
+        <Button variant="outline" size="lg" class="min-w-44 gap-2" :disabled="browseMoreLoading" @click="handleLoadMoreBrowse">
+          <LoaderCircle v-if="browseMoreLoading" :size="16" class="animate-spin" />
+          {{ browseMoreLoading ? t('discovery.browse.loadingMore') : t('discovery.browse.loadMore') }}
+        </Button>
+      </div>
+    </section>
+
+    <div v-else-if="error" class="flex flex-col items-center rounded-2xl border border-destructive/25 bg-destructive/5 px-6 py-12 text-center">
       <AlertCircle :size="30" class="text-destructive" />
       <h2 class="mt-3 font-serif text-xl font-semibold">{{ t('discovery.error.title') }}</h2>
       <p class="mt-1 max-w-lg text-sm text-muted-foreground">{{ error }}</p>
       <Button variant="outline" class="mt-5" @click="handleSearch">{{ t('discovery.error.retry') }}</Button>
     </div>
 
-    <section v-else-if="searching" class="space-y-4" aria-live="polite">
+    <section v-else-if="searching || (browseLoading && !hasSearched)" class="space-y-4" aria-live="polite">
       <div class="flex items-center justify-between">
         <Skeleton class="h-6 w-40" />
         <Skeleton class="h-6 w-24 rounded-full" />
@@ -247,7 +335,16 @@ async function handleCancel(jobId: string) {
         <Badge variant="secondary" class="tabular-nums">{{ results.length }}</Badge>
       </div>
       <div class="grid grid-cols-1 gap-4 min-[480px]:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
-        <DiscoveryBookCard v-for="book in results" :key="book.id" :book="book" :can-acquire="canAcquire" @acquire="handleAcquire" />
+        <DiscoveryBookCard
+          v-for="book in results"
+          :key="book.id"
+          :book="book"
+          :can-acquire="canAcquire"
+          @acquire="handleAcquire"
+          @browse-author="handleBrowseAuthor"
+          @browse-genre="handleBrowseGenre"
+          @browse-similar="handleBrowseSimilar"
+        />
       </div>
     </section>
 
@@ -260,6 +357,54 @@ async function handleCancel(jobId: string) {
       </div>
       <h2 class="mt-4 font-serif text-2xl font-semibold">{{ t('discovery.empty.title') }}</h2>
       <p class="mt-2 max-w-lg text-sm leading-relaxed text-muted-foreground">{{ t('discovery.empty.description') }}</p>
+    </section>
+
+    <section v-else-if="browseHome" class="space-y-10">
+      <div class="overflow-hidden rounded-2xl border border-border/70 bg-card p-5 sm:p-6">
+        <div class="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+          <div class="max-w-xl">
+            <div class="flex items-center gap-2 text-primary">
+              <Flame :size="18" />
+              <span class="text-xs font-semibold uppercase tracking-[0.18em]">{{ t('discovery.browse.explore') }}</span>
+            </div>
+            <h2 class="mt-2 font-serif text-2xl font-semibold">{{ t('discovery.browse.byGenre') }}</h2>
+            <p class="mt-1 text-sm leading-relaxed text-muted-foreground">{{ t('discovery.browse.genreDescription') }}</p>
+          </div>
+          <div class="flex max-w-3xl flex-wrap gap-2">
+            <button
+              v-for="genre in browseHome.genres"
+              :key="genre.slug"
+              type="button"
+              class="rounded-full border border-border bg-background px-3 py-1.5 text-xs font-semibold text-muted-foreground transition hover:border-primary/35 hover:bg-primary/5 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              @click="handleBrowseGenre(genre.slug)"
+            >
+              {{ genre.name }}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <DiscoveryShelf
+        :section="browseHome.trending"
+        :can-acquire="canAcquire"
+        @view-all="handleOpenBrowse"
+        @acquire="handleAcquire"
+        @browse-author="handleBrowseAuthor"
+        @browse-genre="handleBrowseGenre"
+        @browse-similar="handleBrowseSimilar"
+      />
+
+      <DiscoveryShelf
+        v-for="section in browseHome.genreShelves"
+        :key="section.id"
+        :section="section"
+        :can-acquire="canAcquire"
+        @view-all="handleOpenBrowse"
+        @acquire="handleAcquire"
+        @browse-author="handleBrowseAuthor"
+        @browse-genre="handleBrowseGenre"
+        @browse-similar="handleBrowseSimilar"
+      />
     </section>
 
     <section v-else class="grid gap-4 md:grid-cols-3">

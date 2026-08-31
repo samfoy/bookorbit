@@ -9,6 +9,8 @@ const apiMocks = vi.hoisted(() => ({
   startBookAcquisition: vi.fn<typeof BookDiscoveryApi.startBookAcquisition>(),
   fetchBookAcquisitions: vi.fn<typeof BookDiscoveryApi.fetchBookAcquisitions>(),
   cancelBookAcquisition: vi.fn<typeof BookDiscoveryApi.cancelBookAcquisition>(),
+  fetchDiscoveryBrowseHome: vi.fn<typeof BookDiscoveryApi.fetchDiscoveryBrowseHome>(),
+  fetchDiscoveryBrowse: vi.fn<typeof BookDiscoveryApi.fetchDiscoveryBrowse>(),
 }))
 
 vi.mock('../../api/book-discovery.api', () => apiMocks)
@@ -30,6 +32,7 @@ const book: ExternalBookSearchResult = {
   seriesName: null,
   seriesPosition: null,
   hasEbook: true,
+  genres: [{ name: 'Fantasy', slug: 'fantasy' }],
   sources: [{ source: 'hardcover', externalId: '1', url: 'https://hardcover.app/books/piranesi' }],
 }
 
@@ -55,6 +58,47 @@ describe('useBookDiscovery', () => {
     expect(discovery.sourceStatuses.value).toEqual([{ source: 'hardcover', configured: true, available: true, resultCount: 1, message: null }])
     expect(discovery.hasSearched.value).toBe(true)
     expect(discovery.error.value).toBeNull()
+  })
+
+  it('loads browse shelves and appends subsequent browse pages', async () => {
+    apiMocks.fetchDiscoveryBrowseHome.mockResolvedValue({
+      generatedAt: '2026-08-31T00:00:00.000Z',
+      trending: { id: 'trending-week', title: 'Trending', subtitle: null, kind: 'trending', value: null, items: [book] },
+      genreShelves: [],
+      genres: [{ name: 'Fantasy', slug: 'fantasy' }],
+    })
+    apiMocks.fetchDiscoveryBrowse
+      .mockResolvedValueOnce({
+        id: 'genre-fantasy',
+        title: 'Fantasy books',
+        subtitle: null,
+        kind: 'genre',
+        value: 'fantasy',
+        items: [book],
+        page: 1,
+        pageSize: 20,
+        hasMore: true,
+      })
+      .mockResolvedValueOnce({
+        id: 'genre-fantasy',
+        title: 'Fantasy books',
+        subtitle: null,
+        kind: 'genre',
+        value: 'fantasy',
+        items: [{ ...book, id: 'hardcover:2', title: 'Piranesi Two' }],
+        page: 2,
+        pageSize: 20,
+        hasMore: false,
+      })
+    const discovery = useBookDiscovery()
+
+    await discovery.loadBrowseHome()
+    await discovery.openBrowse('genre', 'fantasy')
+    await discovery.loadMoreBrowse()
+
+    expect(discovery.browseHome.value?.trending.items).toEqual([book])
+    expect(discovery.activeBrowse.value?.items.map((item) => item.title)).toEqual(['Piranesi', 'Piranesi Two'])
+    expect(apiMocks.fetchDiscoveryBrowse).toHaveBeenNthCalledWith(2, 'genre', 'fantasy', 2, 20)
   })
 
   it('starts acquisition from a result and adds the returned job', async () => {

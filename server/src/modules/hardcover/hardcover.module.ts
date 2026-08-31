@@ -6,6 +6,7 @@ import { LibraryModule } from '../library/library.module';
 import { UserBookStatusModule } from '../user-book-status/user-book-status.module';
 import { HardcoverAutoSyncSchedulerService } from './hardcover-auto-sync-scheduler.service';
 import { HardcoverBookMatchService } from './hardcover-book-match.service';
+import { HardcoverCatalogBrowseService } from './hardcover-catalog-browse.service';
 import { HardcoverCatalogService } from './hardcover-catalog.service';
 import { HardcoverClientService } from './hardcover-client.service';
 import { HardcoverController } from './hardcover.controller';
@@ -25,12 +26,13 @@ import { HardcoverSyncService } from './hardcover-sync.service';
     HardcoverRepository,
     HardcoverSettingsService,
     HardcoverCatalogService,
+    HardcoverCatalogBrowseService,
     HardcoverBookMatchService,
     HardcoverSyncService,
     HardcoverImportService,
     HardcoverAutoSyncSchedulerService,
     HardcoverEventListener,
   ],
-  exports: [HardcoverSyncService, HardcoverSettingsService, HardcoverCatalogService],
+  exports: [HardcoverSyncService, HardcoverSettingsService, HardcoverCatalogService, HardcoverCatalogBrowseService],
 })
 export class HardcoverModule {}
