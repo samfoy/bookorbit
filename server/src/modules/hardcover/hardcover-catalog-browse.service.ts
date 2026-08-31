@@ -10,6 +10,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 
 import { HardcoverCatalogService, type HardcoverCatalogRow } from './hardcover-catalog.service';
 import { HardcoverClientService } from './hardcover-client.service';
+import { HardcoverReadBooksService } from './hardcover-read-books.service';
 import { HardcoverSettingsService } from './hardcover-settings.service';
 
 const HOME_TRENDING_LIMIT = 80;
@@ -57,9 +58,9 @@ query CatalogBooksByIds($ids: [Int!]!) {
 }`;
 
 const GENRE_BOOKS_QUERY = `
-query CatalogBooksByGenre($filter: jsonb!, $limit: Int!, $offset: Int!) {
+query CatalogBooksByGenre($filter: jsonb!, $readIds: [Int!]!, $limit: Int!, $offset: Int!) {
   books(
-    where: { book_category_id: { _eq: 1 }, cached_tags: { _contains: $filter } }
+    where: { book_category_id: { _eq: 1 }, id: { _nin: $readIds }, cached_tags: { _contains: $filter } }
     order_by: [{ users_count: desc }, { ratings_count: desc }]
     limit: $limit
     offset: $offset
@@ -72,9 +73,9 @@ query CatalogAuthor($query: String!) {
 }`;
 
 const AUTHOR_BOOKS_QUERY = `
-query CatalogBooksByAuthor($authorId: Int!, $limit: Int!, $offset: Int!) {
+query CatalogBooksByAuthor($authorId: Int!, $readIds: [Int!]!, $limit: Int!, $offset: Int!) {
   books(
-    where: { book_category_id: { _eq: 1 }, contributions: { author_id: { _eq: $authorId }, contributor_role_id: { _eq: 1 } } }
+    where: { book_category_id: { _eq: 1 }, id: { _nin: $readIds }, contributions: { author_id: { _eq: $authorId }, contributor_role_id: { _eq: 1 } } }
     order_by: [{ users_count: desc }, { ratings_count: desc }]
     limit: $limit
     offset: $offset
@@ -107,6 +108,7 @@ export interface HardcoverBrowseRequest {
   value?: string;
   page: number;
   pageSize: number;
+  hideRead: boolean;
 }
 
 @Injectable()
@@ -115,11 +117,13 @@ export class HardcoverCatalogBrowseService {
     private readonly client: HardcoverClientService,
     private readonly settings: HardcoverSettingsService,
     private readonly catalog: HardcoverCatalogService,
+    private readonly readBooks: HardcoverReadBooksService,
   ) {}
 
-  async getBrowseHome(userId: number): Promise<DiscoveryBrowseHomeResponse> {
+  async getBrowseHome(userId: number, hideRead = true): Promise<DiscoveryBrowseHomeResponse> {
     const token = await this.requireToken(userId);
-    const ids = await this.fetchTrendingIds(userId, token, HOME_TRENDING_LIMIT, 0);
+    const readIds = hideRead ? await this.readBooks.getReadBookIds(userId) : new Set<number>();
+    const ids = await this.fetchFilteredTrendingPage(userId, token, readIds, 0, HOME_TRENDING_LIMIT);
     const books = await this.fetchBooksByIds(userId, token, ids);
     const trendingItems = this.orderByIds(books, ids);
     const genreShelves = DISCOVERY_GENRES.map((genre) =>
@@ -150,15 +154,21 @@ export class HardcoverCatalogBrowseService {
 
   async browse(userId: number, request: HardcoverBrowseRequest): Promise<DiscoveryBrowseResponse> {
     const token = await this.requireToken(userId);
-    if (request.kind === 'trending') return this.browseTrending(userId, token, request);
-    if (request.kind === 'genre') return this.browseGenre(userId, token, request);
-    if (request.kind === 'author') return this.browseAuthor(userId, token, request);
-    return this.browseSimilar(userId, token, request);
+    const readIds = request.hideRead ? await this.readBooks.getReadBookIds(userId) : new Set<number>();
+    if (request.kind === 'trending') return this.browseTrending(userId, token, request, readIds);
+    if (request.kind === 'genre') return this.browseGenre(userId, token, request, readIds);
+    if (request.kind === 'author') return this.browseAuthor(userId, token, request, readIds);
+    return this.browseSimilar(userId, token, request, readIds);
   }
 
-  private async browseTrending(userId: number, token: string, request: HardcoverBrowseRequest): Promise<DiscoveryBrowseResponse> {
-    const offset = (request.page - 1) * request.pageSize;
-    const ids = await this.fetchTrendingIds(userId, token, request.pageSize + 1, offset);
+  private async browseTrending(
+    userId: number,
+    token: string,
+    request: HardcoverBrowseRequest,
+    readIds: Set<number>,
+  ): Promise<DiscoveryBrowseResponse> {
+    const filteredOffset = (request.page - 1) * request.pageSize;
+    const ids = await this.fetchFilteredTrendingPage(userId, token, readIds, filteredOffset, request.pageSize);
     const pageIds = ids.slice(0, request.pageSize);
     const books = await this.fetchBooksByIds(userId, token, pageIds);
     return this.response(
@@ -173,11 +183,12 @@ export class HardcoverCatalogBrowseService {
     );
   }
 
-  private async browseGenre(userId: number, token: string, request: HardcoverBrowseRequest): Promise<DiscoveryBrowseResponse> {
+  private async browseGenre(userId: number, token: string, request: HardcoverBrowseRequest, readIds: Set<number>): Promise<DiscoveryBrowseResponse> {
     const genre = this.resolveGenre(request.value);
     const limit = request.pageSize + 1;
     const response = await this.client.query<CatalogBooksResponse>(userId, token, GENRE_BOOKS_QUERY, {
       filter: { Genre: [{ tagSlug: genre.slug }] },
+      readIds: [...readIds],
       limit,
       offset: (request.page - 1) * request.pageSize,
     });
@@ -194,12 +205,13 @@ export class HardcoverCatalogBrowseService {
     );
   }
 
-  private async browseAuthor(userId: number, token: string, request: HardcoverBrowseRequest): Promise<DiscoveryBrowseResponse> {
+  private async browseAuthor(userId: number, token: string, request: HardcoverBrowseRequest, readIds: Set<number>): Promise<DiscoveryBrowseResponse> {
     const value = this.requireValue(request.value, 'Author is required');
     const author = await this.resolveAuthor(userId, token, value);
     const limit = request.pageSize + 1;
     const response = await this.client.query<CatalogBooksResponse>(userId, token, AUTHOR_BOOKS_QUERY, {
       authorId: author.id,
+      readIds: [...readIds],
       limit,
       offset: (request.page - 1) * request.pageSize,
     });
@@ -216,7 +228,12 @@ export class HardcoverCatalogBrowseService {
     );
   }
 
-  private async browseSimilar(userId: number, token: string, request: HardcoverBrowseRequest): Promise<DiscoveryBrowseResponse> {
+  private async browseSimilar(
+    userId: number,
+    token: string,
+    request: HardcoverBrowseRequest,
+    readIds: Set<number>,
+  ): Promise<DiscoveryBrowseResponse> {
     const id = Number(this.requireValue(request.value, 'Hardcover book id is required'));
     if (!Number.isSafeInteger(id) || id <= 0) throw new BadRequestException('Invalid Hardcover book id');
     const seedResponse = await this.client.query<SimilarSeedResponse>(userId, token, SIMILAR_SEED_QUERY, { id });
@@ -225,8 +242,9 @@ export class HardcoverCatalogBrowseService {
     const allIds = Array.isArray(seed.cached_similar_book_ids)
       ? seed.cached_similar_book_ids.filter((candidate): candidate is number => Number.isSafeInteger(candidate) && candidate > 0)
       : [];
+    const visibleIds = allIds.filter((candidate) => !readIds.has(candidate));
     const offset = (request.page - 1) * request.pageSize;
-    const pageIds = allIds.slice(offset, offset + request.pageSize);
+    const pageIds = visibleIds.slice(offset, offset + request.pageSize);
     const books = await this.fetchBooksByIds(userId, token, pageIds);
     return this.response(
       `similar-${id}`,
@@ -236,7 +254,7 @@ export class HardcoverCatalogBrowseService {
       String(id),
       this.orderByIds(books, pageIds),
       request,
-      allIds.length > offset + request.pageSize,
+      visibleIds.length > offset + request.pageSize,
     );
   }
 
@@ -255,6 +273,24 @@ export class HardcoverCatalogBrowseService {
     const response = await this.client.query<TrendingResponse>(userId, token, TRENDING_IDS_QUERY, { duration: 'week', limit, offset });
     if (response.books_trending?.error) throw new BadRequestException('Hardcover trending books are unavailable');
     return (response.books_trending?.ids ?? []).filter((id) => Number.isSafeInteger(id) && id > 0);
+  }
+
+  private async fetchFilteredTrendingPage(
+    userId: number,
+    token: string,
+    readIds: Set<number>,
+    filteredOffset: number,
+    pageSize: number,
+  ): Promise<number[]> {
+    const target = filteredOffset + pageSize + 1;
+    const visible: number[] = [];
+    const chunkSize = 100;
+    for (let rawOffset = 0; rawOffset < 1000 && visible.length < target; rawOffset += chunkSize) {
+      const chunk = await this.fetchTrendingIds(userId, token, chunkSize, rawOffset);
+      visible.push(...chunk.filter((id) => !readIds.has(id)));
+      if (chunk.length < chunkSize) break;
+    }
+    return visible.slice(filteredOffset, target);
   }
 
   private async fetchBooksByIds(userId: number, token: string, ids: number[]): Promise<ExternalBookSearchResult[]> {

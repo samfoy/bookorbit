@@ -20,6 +20,7 @@ Active fork implementation. The branch already contains substantial, verified Bo
 | Browse authors, genres, and similar books                                    | Done          | Live paginated Science Fiction, Ursula K. Le Guin, and Piranesi-similar provider calls return ranked books                                                       |
 | See more than one result page                                                | Done          | Bounded 6-40 item pages expose `hasMore`; the client appends and deduplicates pages through a Load more action                                                   |
 | Acquire from every discovery surface                                         | Done          | Search, shelf, genre, author, trending, and similar cards all open the same verified acquisition sheet and job pipeline                                          |
+| Hide books already read                                                      | Done          | Hardcover Read IDs are fetched in bounded pages, cached per user, and excluded from shelves and paginated browse by default; a UI toggle reveals them            |
 
 ## Ownership gate
 

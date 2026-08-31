@@ -13,6 +13,7 @@ import { HardcoverController } from './hardcover.controller';
 import { HardcoverEventListener } from './hardcover-event-listener.service';
 import { HardcoverImportService } from './hardcover-import.service';
 import { HardcoverQueueService } from './hardcover-queue.service';
+import { HardcoverReadBooksService } from './hardcover-read-books.service';
 import { HardcoverRepository } from './hardcover.repository';
 import { HardcoverSettingsService } from './hardcover-settings.service';
 import { HardcoverSyncService } from './hardcover-sync.service';
@@ -27,6 +28,7 @@ import { HardcoverSyncService } from './hardcover-sync.service';
     HardcoverSettingsService,
     HardcoverCatalogService,
     HardcoverCatalogBrowseService,
+    HardcoverReadBooksService,
     HardcoverBookMatchService,
     HardcoverSyncService,
     HardcoverImportService,

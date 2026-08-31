@@ -1,6 +1,7 @@
 import { DISCOVERY_BROWSE_KINDS, type DiscoveryBrowseKind } from '@bookorbit/types';
 import { Transform } from 'class-transformer';
-import { IsIn, IsInt, IsOptional, IsString, Length, Max, Min } from 'class-validator';
+import { IsBoolean, IsIn, IsInt, IsOptional, IsString, Length, Max, Min } from 'class-validator';
+import { toBoolean } from './browse-home.dto';
 
 export class BrowseExternalBooksDto {
   @IsIn(DISCOVERY_BROWSE_KINDS)
@@ -23,4 +24,8 @@ export class BrowseExternalBooksDto {
   @Min(6)
   @Max(40)
   pageSize = 20;
+
+  @Transform(({ value }) => toBoolean(value))
+  @IsBoolean()
+  hideRead = true;
 }

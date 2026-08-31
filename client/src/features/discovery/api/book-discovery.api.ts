@@ -18,8 +18,8 @@ export async function searchExternalBooks(query: string, sources: ExternalCatalo
   return readJson<ExternalBookSearchResponse>(response, 'Failed to search external catalogs')
 }
 
-export async function fetchDiscoveryBrowseHome(): Promise<DiscoveryBrowseHomeResponse> {
-  const response = await api(`${BASE}/browse/home`)
+export async function fetchDiscoveryBrowseHome(hideRead: boolean): Promise<DiscoveryBrowseHomeResponse> {
+  const response = await api(`${BASE}/browse/home?${new URLSearchParams({ hideRead: String(hideRead) }).toString()}`)
   return readJson<DiscoveryBrowseHomeResponse>(response, 'Failed to load book discovery')
 }
 
@@ -28,11 +28,13 @@ export async function fetchDiscoveryBrowse(
   value: string | null,
   page: number,
   pageSize: number,
+  hideRead: boolean,
 ): Promise<DiscoveryBrowseResponse> {
   const params = new URLSearchParams({ kind })
   if (value) params.set('value', value)
   params.set('page', String(page))
   params.set('pageSize', String(pageSize))
+  params.set('hideRead', String(hideRead))
   const response = await api(`${BASE}/browse?${params.toString()}`)
   return readJson<DiscoveryBrowseResponse>(response, 'Failed to browse external books')
 }

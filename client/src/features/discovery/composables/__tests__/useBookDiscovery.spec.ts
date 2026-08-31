@@ -98,7 +98,28 @@ describe('useBookDiscovery', () => {
 
     expect(discovery.browseHome.value?.trending.items).toEqual([book])
     expect(discovery.activeBrowse.value?.items.map((item) => item.title)).toEqual(['Piranesi', 'Piranesi Two'])
-    expect(apiMocks.fetchDiscoveryBrowse).toHaveBeenNthCalledWith(2, 'genre', 'fantasy', 2, 20)
+    expect(apiMocks.fetchDiscoveryBrowse).toHaveBeenNthCalledWith(2, 'genre', 'fantasy', 2, 20, true)
+  })
+
+  it('can reveal read books and reloads the current browse view', async () => {
+    apiMocks.fetchDiscoveryBrowse.mockResolvedValue({
+      id: 'genre-fantasy',
+      title: 'Fantasy books',
+      subtitle: null,
+      kind: 'genre',
+      value: 'fantasy',
+      items: [book],
+      page: 1,
+      pageSize: 20,
+      hasMore: false,
+    })
+    const discovery = useBookDiscovery()
+    await discovery.openBrowse('genre', 'fantasy')
+
+    await discovery.setHideRead(false)
+
+    expect(discovery.hideRead.value).toBe(false)
+    expect(apiMocks.fetchDiscoveryBrowse).toHaveBeenLastCalledWith('genre', 'fantasy', 1, 20, false)
   })
 
   it('starts acquisition from a result and adds the returned job', async () => {

@@ -43,6 +43,7 @@ export function useBookDiscovery() {
   const browseLoading = ref(false)
   const browseMoreLoading = ref(false)
   const browseError = ref<string | null>(null)
+  const hideRead = ref(true)
 
   const acquisitionSources = ref<BookAcquisitionSourceCapability[]>([])
   const jobs = ref<BookAcquisitionJob[]>([])
@@ -78,7 +79,7 @@ export function useBookDiscovery() {
     browseLoading.value = true
     browseError.value = null
     try {
-      browseHome.value = await fetchDiscoveryBrowseHome()
+      browseHome.value = await fetchDiscoveryBrowseHome(hideRead.value)
     } catch (cause) {
       browseError.value = errorMessage(cause, 'Failed to load book discovery')
     } finally {
@@ -94,7 +95,7 @@ export function useBookDiscovery() {
     results.value = []
     sourceStatuses.value = []
     try {
-      activeBrowse.value = await fetchDiscoveryBrowse(kind, value, 1, BROWSE_PAGE_SIZE)
+      activeBrowse.value = await fetchDiscoveryBrowse(kind, value, 1, BROWSE_PAGE_SIZE, hideRead.value)
     } catch (cause) {
       browseError.value = errorMessage(cause, 'Failed to browse external books')
     } finally {
@@ -108,7 +109,7 @@ export function useBookDiscovery() {
     browseMoreLoading.value = true
     browseError.value = null
     try {
-      const next = await fetchDiscoveryBrowse(current.kind, current.value, current.page + 1, current.pageSize)
+      const next = await fetchDiscoveryBrowse(current.kind, current.value, current.page + 1, current.pageSize, hideRead.value)
       const seen = new Set(current.items.map((book) => book.id))
       activeBrowse.value = { ...next, items: [...current.items, ...next.items.filter((book) => !seen.has(book.id))] }
     } catch (cause) {
@@ -121,6 +122,14 @@ export function useBookDiscovery() {
   function closeBrowse(): void {
     activeBrowse.value = null
     browseError.value = null
+  }
+
+  async function setHideRead(value: boolean): Promise<void> {
+    if (hideRead.value === value) return
+    const current = activeBrowse.value
+    hideRead.value = value
+    await loadBrowseHome()
+    if (current) await openBrowse(current.kind, current.value)
   }
 
   function toggleSource(source: ExternalCatalogSource): void {
@@ -183,6 +192,7 @@ export function useBookDiscovery() {
     browseLoading,
     browseMoreLoading,
     browseError,
+    hideRead,
     acquisitionSources,
     jobs,
     acquisitionLoading,
@@ -193,6 +203,7 @@ export function useBookDiscovery() {
     openBrowse,
     loadMoreBrowse,
     closeBrowse,
+    setHideRead,
     toggleSource,
     loadAcquisitionState,
     acquire,

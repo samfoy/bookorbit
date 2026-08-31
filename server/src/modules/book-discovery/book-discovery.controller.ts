@@ -9,6 +9,7 @@ import { BookAcquisitionService } from './book-acquisition.service';
 import { BookDiscoveryService } from './book-discovery.service';
 import { CreateBookAcquisitionDto } from './dto/create-book-acquisition.dto';
 import { BrowseExternalBooksDto } from './dto/browse-external-books.dto';
+import { BrowseHomeDto } from './dto/browse-home.dto';
 import { SearchExternalBooksDto } from './dto/search-external-books.dto';
 
 @Controller('discovery')
@@ -25,8 +26,8 @@ export class BookDiscoveryController {
   }
 
   @Get('browse/home')
-  browseHome(@CurrentUser() user: RequestUser) {
-    return this.browseCatalog.getBrowseHome(user.id);
+  browseHome(@Query() dto: BrowseHomeDto, @CurrentUser() user: RequestUser) {
+    return this.browseCatalog.getBrowseHome(user.id, dto.hideRead);
   }
 
   @Get('browse')

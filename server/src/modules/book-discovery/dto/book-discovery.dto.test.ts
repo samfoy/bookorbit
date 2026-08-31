@@ -4,14 +4,25 @@ import { describe, expect, it } from 'vitest';
 
 import { CreateBookAcquisitionDto } from './create-book-acquisition.dto';
 import { BrowseExternalBooksDto } from './browse-external-books.dto';
+import { BrowseHomeDto } from './browse-home.dto';
 import { SearchExternalBooksDto } from './search-external-books.dto';
 
 describe('book discovery DTOs', () => {
+  it('hides read books by default and accepts an explicit reveal', async () => {
+    const defaultDto = plainToInstance(BrowseHomeDto, {});
+    const revealDto = plainToInstance(BrowseHomeDto, { hideRead: 'false' });
+
+    expect(await validate(defaultDto)).toEqual([]);
+    expect(await validate(revealDto)).toEqual([]);
+    expect(defaultDto.hideRead).toBe(true);
+    expect(revealDto.hideRead).toBe(false);
+  });
+
   it('transforms bounded browse pagination', async () => {
-    const dto = plainToInstance(BrowseExternalBooksDto, { kind: 'genre', value: ' fantasy ', page: '2', pageSize: '24' });
+    const dto = plainToInstance(BrowseExternalBooksDto, { kind: 'genre', value: ' fantasy ', page: '2', pageSize: '24', hideRead: 'false' });
 
     expect(await validate(dto)).toEqual([]);
-    expect(dto).toMatchObject({ kind: 'genre', value: 'fantasy', page: 2, pageSize: 24 });
+    expect(dto).toMatchObject({ kind: 'genre', value: 'fantasy', page: 2, pageSize: 24, hideRead: false });
   });
 
   it('trims the query and deduplicates repeated catalog sources', async () => {

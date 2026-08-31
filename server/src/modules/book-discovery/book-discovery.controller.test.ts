@@ -35,11 +35,11 @@ describe('BookDiscoveryController', () => {
     mockBrowse.getBrowseHome.mockResolvedValue(home);
     mockBrowse.browse.mockResolvedValue(page);
     const controller = new BookDiscoveryController(mockService as never, {} as never, mockBrowse as never);
-    const dto = { kind: 'genre' as const, value: 'fantasy', page: 2, pageSize: 20 };
+    const dto = { kind: 'genre' as const, value: 'fantasy', page: 2, pageSize: 20, hideRead: true };
 
-    await expect(controller.browseHome(user as never)).resolves.toBe(home);
+    await expect(controller.browseHome({ hideRead: true }, user as never)).resolves.toBe(home);
     await expect(controller.browse(dto, user as never)).resolves.toBe(page);
-    expect(mockBrowse.getBrowseHome).toHaveBeenCalledWith(12);
+    expect(mockBrowse.getBrowseHome).toHaveBeenCalledWith(12, true);
     expect(mockBrowse.browse).toHaveBeenCalledWith(12, dto);
   });
 });

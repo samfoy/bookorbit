@@ -45,11 +45,11 @@ describe('book-discovery.api', () => {
   it('loads browse home and URL-safe paginated browse modes', async () => {
     mockApi.mockResolvedValueOnce(jsonResponse({ genreShelves: [] })).mockResolvedValueOnce(jsonResponse({ items: [], page: 2 }))
 
-    await fetchDiscoveryBrowseHome()
-    await fetchDiscoveryBrowse('author', 'Ursula K. Le Guin', 2, 20)
+    await fetchDiscoveryBrowseHome(true)
+    await fetchDiscoveryBrowse('author', 'Ursula K. Le Guin', 2, 20, true)
 
-    expect(mockApi).toHaveBeenNthCalledWith(1, '/api/v1/discovery/browse/home')
-    expect(mockApi).toHaveBeenNthCalledWith(2, '/api/v1/discovery/browse?kind=author&value=Ursula+K.+Le+Guin&page=2&pageSize=20')
+    expect(mockApi).toHaveBeenNthCalledWith(1, '/api/v1/discovery/browse/home?hideRead=true')
+    expect(mockApi).toHaveBeenNthCalledWith(2, '/api/v1/discovery/browse?kind=author&value=Ursula+K.+Le+Guin&page=2&pageSize=20&hideRead=true')
   })
 
   it('starts an acquisition with the exact backend DTO shape', async () => {

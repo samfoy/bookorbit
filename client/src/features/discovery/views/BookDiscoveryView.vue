@@ -6,6 +6,7 @@ import { toast } from 'vue-sonner'
 import {
   AlertCircle,
   ArrowLeft,
+  BookCheck,
   BookOpen,
   ChartNoAxesColumnIncreasing,
   Database,
@@ -45,6 +46,7 @@ const {
   browseLoading,
   browseMoreLoading,
   browseError,
+  hideRead,
   acquisitionSources,
   jobs,
   acquisitionError,
@@ -54,6 +56,7 @@ const {
   openBrowse,
   loadMoreBrowse,
   closeBrowse,
+  setHideRead,
   toggleSource,
   loadAcquisitionState,
   acquire,
@@ -130,6 +133,10 @@ function handleBackToBrowse() {
 
 function handleLoadMoreBrowse() {
   void loadMoreBrowse()
+}
+
+function handleToggleHideRead() {
+  void setHideRead(!hideRead.value)
 }
 
 function handleAcquisitionOpen(open: boolean) {
@@ -235,6 +242,20 @@ async function handleCancel(jobId: string) {
         </div>
       </div>
     </section>
+
+    <div class="flex justify-end">
+      <button
+        data-testid="toggle-hide-read"
+        type="button"
+        class="inline-flex min-h-10 items-center gap-2 rounded-full border px-3.5 py-2 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        :class="hideRead ? 'border-primary/30 bg-primary/10 text-primary' : 'border-border bg-card text-muted-foreground hover:text-foreground'"
+        :aria-pressed="hideRead"
+        @click="handleToggleHideRead"
+      >
+        <BookCheck :size="15" />
+        {{ hideRead ? t('discovery.browse.hidingRead') : t('discovery.browse.showingRead') }}
+      </button>
+    </div>
 
     <AcquisitionQueue :jobs="jobs" @cancel="handleCancel" />
 

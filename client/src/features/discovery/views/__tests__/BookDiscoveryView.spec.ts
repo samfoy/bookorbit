@@ -25,7 +25,7 @@ describe('BookDiscoveryView', () => {
     apiMock.mockImplementation(async (input) => {
       const url = String(input)
       if (url === '/api/v1/libraries') return response([])
-      if (url.endsWith('/browse/home')) {
+      if (url.includes('/browse/home')) {
         return response({
           generatedAt: '2026-08-31T00:00:00.000Z',
           trending: { id: 'trending', title: 'Trending this week', subtitle: null, kind: 'trending', value: null, items: [] },
@@ -67,6 +67,26 @@ describe('BookDiscoveryView', () => {
     expect(wrapper.text()).toContain('Explore by genre')
     expect(wrapper.text()).toContain('Trending this week')
     expect(wrapper.text()).toContain('Fantasy')
+    expect(wrapper.text()).toContain("Hiding books you've read")
+    expect(apiMock).toHaveBeenCalledWith('/api/v1/discovery/browse/home?hideRead=true')
+  })
+
+  it('can reveal books already read', async () => {
+    const wrapper = mount(BookDiscoveryView, {
+      global: {
+        stubs: {
+          RouterLink: { template: '<a><slot /></a>' },
+          AcquisitionSheet: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    await wrapper.get('[data-testid="toggle-hide-read"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain("Showing books you've read")
+    expect(apiMock).toHaveBeenCalledWith('/api/v1/discovery/browse/home?hideRead=false')
   })
 
   it('does not request acquisition-only state without upload permission', async () => {
