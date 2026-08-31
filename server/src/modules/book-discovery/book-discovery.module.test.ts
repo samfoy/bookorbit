@@ -33,5 +33,6 @@ describe('BookDiscoveryModule', () => {
       X3EpubOptimizerService,
       BookAcquisitionService,
     ]);
+    expect(Reflect.getMetadata(MODULE_METADATA.EXPORTS, BookDiscoveryModule)).toEqual([BookDiscoveryService, BookAcquisitionService]);
   });
 });

@@ -24,5 +24,6 @@ import { X3EpubOptimizerService } from './x3-epub-optimizer.service';
     X3EpubOptimizerService,
     BookAcquisitionService,
   ],
+  exports: [BookDiscoveryService, BookAcquisitionService],
 })
 export class BookDiscoveryModule {}

@@ -111,3 +111,19 @@ export interface BookAcquisitionSourceCapability {
   label: string;
   message: string | null;
 }
+
+export interface KoreaderStoreFolderOption {
+  id: number;
+  path: string;
+}
+
+export interface KoreaderStoreLibraryOption {
+  id: number;
+  name: string;
+  folders: KoreaderStoreFolderOption[];
+}
+
+export interface KoreaderStoreConfigResponse {
+  sources: BookAcquisitionSourceCapability[];
+  libraries: KoreaderStoreLibraryOption[];
+}
