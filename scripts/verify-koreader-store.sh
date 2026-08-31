@@ -4,6 +4,8 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 cd "$ROOT"
 
+bash scripts/verify-koreader-emulator.sh
+
 python3 - <<'PY'
 from pathlib import Path
 root = Path('.')
