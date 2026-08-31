@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
+import { BookDiscoveryModule } from '../book-discovery/book-discovery.module';
+import { HardcoverModule } from '../hardcover/hardcover.module';
+import { LibraryModule } from '../library/library.module';
 import { KoreaderAnnotationExchangeService } from './koreader-annotation-exchange.service';
 import { KoreaderBookmarkExchangeService } from './koreader-bookmark-exchange.service';
 import { KoreaderBookmarkRepository } from './koreader-bookmark.repository';
@@ -19,9 +22,11 @@ import { KoreaderPluginService } from './koreader-plugin.service';
 import { KoreaderRepository } from './koreader.repository';
 import { KoreaderService } from './koreader.service';
 import { KoreaderStatsService } from './koreader-stats.service';
+import { KoreaderStoreService } from './koreader-store.service';
 
 describe('KoreaderModule', () => {
   it('registers expected controllers, providers, and exports', () => {
+    expect(Reflect.getMetadata('imports', KoreaderModule)).toEqual(expect.arrayContaining([BookDiscoveryModule, HardcoverModule, LibraryModule]));
     expect(Reflect.getMetadata('controllers', KoreaderModule)).toEqual([KoreaderController, KoreaderPluginController, KoreaderCatalogController]);
     expect(Reflect.getMetadata('providers', KoreaderModule)).toEqual([
       KoreaderService,
@@ -39,6 +44,7 @@ describe('KoreaderModule', () => {
       KoreaderBookmarkExchangeService,
       KoreaderBookmarkRepository,
       KoreaderStatsService,
+      KoreaderStoreService,
     ]);
     expect(Reflect.getMetadata('exports', KoreaderModule)).toEqual([KoreaderService, KoreaderRepository]);
   });

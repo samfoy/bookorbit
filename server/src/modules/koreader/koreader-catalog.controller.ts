@@ -1,4 +1,22 @@
-import { Body, Controller, Get, Header, Headers, Param, ParseEnumPipe, ParseIntPipe, Put, Query, Res, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Header,
+  Headers,
+  HttpCode,
+  HttpStatus,
+  Param,
+  ParseEnumPipe,
+  ParseIntPipe,
+  ParseUUIDPipe,
+  Post,
+  Put,
+  Query,
+  Res,
+  UseGuards,
+} from '@nestjs/common';
 import type { FastifyReply } from 'fastify';
 
 import { KOREADER_DASHBOARD_SECTION_TYPE } from '@bookorbit/types';
@@ -8,6 +26,7 @@ import { Public } from '../../common/decorators/public.decorator';
 import type { RequestUser } from '../../common/types/request-user';
 import { KoreaderAuthGuard } from './koreader-auth.guard';
 import { KoreaderCatalogService } from './koreader-catalog.service';
+import { KoreaderStoreService } from './koreader-store.service';
 import {
   KoreaderCatalogBookDetailQueryDto,
   KoreaderCatalogBooksQueryDto,
@@ -18,12 +37,16 @@ import {
   KoreaderCatalogSetRatingDto,
   KoreaderCatalogSetReadStatusDto,
 } from './dto/koreader-catalog-query.dto';
+import { KoreaderStoreBrowseDto, KoreaderStoreCreateAcquisitionDto, KoreaderStoreHomeDto, KoreaderStoreSearchDto } from './dto/koreader-store.dto';
 
 @Public()
 @UseGuards(KoreaderAuthGuard)
 @Controller('koreader/plugin/catalog')
 export class KoreaderCatalogController {
-  constructor(private readonly catalogService: KoreaderCatalogService) {}
+  constructor(
+    private readonly catalogService: KoreaderCatalogService,
+    private readonly storeService: KoreaderStoreService,
+  ) {}
 
   @Get('root')
   @Header('Cache-Control', 'private, max-age=30')
@@ -101,5 +124,52 @@ export class KoreaderCatalogController {
   @Get('files/:fileId/download')
   download(@CurrentUser() user: RequestUser, @Param('fileId', ParseIntPipe) fileId: number, @Res() reply: FastifyReply) {
     return this.catalogService.streamFile(user, fileId, reply);
+  }
+
+  @Get('store/home')
+  @Header('Cache-Control', 'no-store')
+  storeHome(@CurrentUser() user: RequestUser, @Query() query: KoreaderStoreHomeDto) {
+    return this.storeService.getHome(user, query);
+  }
+
+  @Get('store/browse')
+  @Header('Cache-Control', 'no-store')
+  storeBrowse(@CurrentUser() user: RequestUser, @Query() query: KoreaderStoreBrowseDto) {
+    return this.storeService.browse(user, query);
+  }
+
+  @Get('store/search')
+  @Header('Cache-Control', 'no-store')
+  storeSearch(@CurrentUser() user: RequestUser, @Query() query: KoreaderStoreSearchDto) {
+    return this.storeService.search(user, query);
+  }
+
+  @Get('store/config')
+  @Header('Cache-Control', 'no-store')
+  storeConfig(@CurrentUser() user: RequestUser) {
+    return this.storeService.getConfig(user);
+  }
+
+  @Get('store/acquisitions')
+  @Header('Cache-Control', 'no-store')
+  storeAcquisitions(@CurrentUser() user: RequestUser) {
+    return this.storeService.listAcquisitions(user);
+  }
+
+  @Post('store/acquisitions')
+  @HttpCode(HttpStatus.ACCEPTED)
+  startStoreAcquisition(@CurrentUser() user: RequestUser, @Body() body: KoreaderStoreCreateAcquisitionDto) {
+    return this.storeService.startAcquisition(user, body);
+  }
+
+  @Get('store/acquisitions/:jobId')
+  @Header('Cache-Control', 'no-store')
+  storeAcquisition(@CurrentUser() user: RequestUser, @Param('jobId', new ParseUUIDPipe({ version: '4' })) jobId: string) {
+    return this.storeService.getAcquisition(user, jobId);
+  }
+
+  @Delete('store/acquisitions/:jobId')
+  cancelStoreAcquisition(@CurrentUser() user: RequestUser, @Param('jobId', new ParseUUIDPipe({ version: '4' })) jobId: string) {
+    return this.storeService.cancelAcquisition(user, jobId);
   }
 }

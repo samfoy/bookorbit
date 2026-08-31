@@ -1,4 +1,6 @@
-import { GUARDS_METADATA } from '@nestjs/common/constants';
+import { HttpStatus, ParseUUIDPipe, RequestMethod } from '@nestjs/common';
+import { GUARDS_METADATA, HTTP_CODE_METADATA, METHOD_METADATA, PATH_METADATA, ROUTE_ARGS_METADATA } from '@nestjs/common/constants';
+import { describe, expect, it, vi } from 'vitest';
 
 import { IS_PUBLIC_KEY } from '../../common/decorators/public.decorator';
 import { KoreaderAuthGuard } from './koreader-auth.guard';
@@ -20,7 +22,17 @@ function makeController() {
     streamThumbnail: vi.fn().mockResolvedValue(undefined),
     streamFile: vi.fn().mockResolvedValue(undefined),
   };
-  return { controller: new KoreaderCatalogController(catalogService as never), catalogService };
+  const storeService = {
+    getHome: vi.fn().mockResolvedValue({ generatedAt: '2026-08-31T00:00:00.000Z' }),
+    browse: vi.fn().mockResolvedValue({ id: 'genre-fantasy' }),
+    search: vi.fn().mockResolvedValue({ results: [], sources: [] }),
+    getConfig: vi.fn().mockResolvedValue({ sources: [], libraries: [] }),
+    listAcquisitions: vi.fn().mockReturnValue([]),
+    startAcquisition: vi.fn().mockResolvedValue({ id: '379ad1d5-8115-4b61-90ff-9318e8a3ce9c', status: 'queued' }),
+    getAcquisition: vi.fn().mockReturnValue({ id: '379ad1d5-8115-4b61-90ff-9318e8a3ce9c', status: 'queued' }),
+    cancelAcquisition: vi.fn().mockReturnValue({ id: '379ad1d5-8115-4b61-90ff-9318e8a3ce9c', status: 'cancelled' }),
+  };
+  return { controller: new KoreaderCatalogController(catalogService as never, storeService as never), catalogService, storeService };
 }
 
 describe('KoreaderCatalogController', () => {
@@ -91,5 +103,55 @@ describe('KoreaderCatalogController', () => {
 
     await controller.dashboardSection(user, 'smart-scope', { smartScopeId: 5 });
     expect(catalogService.getDashboardSection).toHaveBeenCalledWith(user, { type: 'smart-scope', smartScopeId: 5 });
+  });
+
+  it('forwards store discovery routes with the authenticated user', async () => {
+    const { controller, storeService } = makeController();
+    const user = { id: 7 } as never;
+    const homeQuery = { hideRead: false };
+    const browseQuery = { kind: 'genre', value: 'fantasy', page: 2, pageSize: 12, hideRead: true } as never;
+    const searchQuery = { query: 'Piranesi', sources: ['hardcover'] } as never;
+
+    await controller.storeHome(user, homeQuery);
+    await controller.storeBrowse(user, browseQuery);
+    await controller.storeSearch(user, searchQuery);
+    await controller.storeConfig(user);
+
+    expect(storeService.getHome).toHaveBeenCalledWith(user, homeQuery);
+    expect(storeService.browse).toHaveBeenCalledWith(user, browseQuery);
+    expect(storeService.search).toHaveBeenCalledWith(user, searchQuery);
+    expect(storeService.getConfig).toHaveBeenCalledWith(user);
+  });
+
+  it('forwards the store acquisition lifecycle with the authenticated user', async () => {
+    const { controller, storeService } = makeController();
+    const user = { id: 7 } as never;
+    const jobId = '379ad1d5-8115-4b61-90ff-9318e8a3ce9c';
+    const request = { libraryId: 3, title: 'Piranesi', authors: ['Susanna Clarke'], source: 'auto' as const };
+
+    controller.storeAcquisitions(user);
+    await controller.startStoreAcquisition(user, request);
+    controller.storeAcquisition(user, jobId);
+    controller.cancelStoreAcquisition(user, jobId);
+
+    expect(storeService.listAcquisitions).toHaveBeenCalledWith(user);
+    expect(storeService.startAcquisition).toHaveBeenCalledWith(user, request);
+    expect(storeService.getAcquisition).toHaveBeenCalledWith(user, jobId);
+    expect(storeService.cancelAcquisition).toHaveBeenCalledWith(user, jobId);
+  });
+
+  it('registers the store route methods, accepted start status, and UUID job boundaries', () => {
+    expect(Reflect.getMetadata(PATH_METADATA, KoreaderCatalogController.prototype.storeHome)).toBe('store/home');
+    expect(Reflect.getMetadata(METHOD_METADATA, KoreaderCatalogController.prototype.storeHome)).toBe(RequestMethod.GET);
+    expect(Reflect.getMetadata(PATH_METADATA, KoreaderCatalogController.prototype.startStoreAcquisition)).toBe('store/acquisitions');
+    expect(Reflect.getMetadata(METHOD_METADATA, KoreaderCatalogController.prototype.startStoreAcquisition)).toBe(RequestMethod.POST);
+    expect(Reflect.getMetadata(HTTP_CODE_METADATA, KoreaderCatalogController.prototype.startStoreAcquisition)).toBe(HttpStatus.ACCEPTED);
+    expect(Reflect.getMetadata(METHOD_METADATA, KoreaderCatalogController.prototype.cancelStoreAcquisition)).toBe(RequestMethod.DELETE);
+
+    for (const method of ['storeAcquisition', 'cancelStoreAcquisition'] as const) {
+      const metadata = Reflect.getMetadata(ROUTE_ARGS_METADATA, KoreaderCatalogController, method) as Record<string, { pipes?: unknown[] }>;
+      const pipes = Object.values(metadata).flatMap((entry) => entry.pipes ?? []);
+      expect(pipes.some((pipe) => pipe instanceof ParseUUIDPipe)).toBe(true);
+    }
   });
 });

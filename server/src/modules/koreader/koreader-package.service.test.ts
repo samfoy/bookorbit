@@ -172,6 +172,7 @@ describe('KoreaderPackageService', () => {
       const result = await service.getVersionInfo();
 
       expect(result.capabilities).toContain('catalogBulkManifest');
+      expect(result.capabilities).toContain('catalogStore');
       expect(result.capabilities).toContain('bookmarkSync');
     });
 

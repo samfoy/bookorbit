@@ -7,7 +7,10 @@ import { AnnotationModule } from '../annotation/annotation.module';
 import { BookmarkModule } from '../bookmark/bookmark.module';
 import { BookModule } from '../book/book.module';
 import { BrowseCountsModule } from '../browse-counts/browse-counts.module';
+import { BookDiscoveryModule } from '../book-discovery/book-discovery.module';
 import { DashboardModule } from '../dashboard/dashboard.module';
+import { HardcoverModule } from '../hardcover/hardcover.module';
+import { LibraryModule } from '../library/library.module';
 import { OpdsModule } from '../opds/opds.module';
 import { PositionConverterModule } from '../position-converter/position-converter.module';
 import { RecommendationModule } from '../recommendation/recommendation.module';
@@ -32,6 +35,7 @@ import { KoreaderPluginService } from './koreader-plugin.service';
 import { KoreaderRepository } from './koreader.repository';
 import { KoreaderService } from './koreader.service';
 import { KoreaderStatsService } from './koreader-stats.service';
+import { KoreaderStoreService } from './koreader-store.service';
 
 @Module({
   imports: [
@@ -45,7 +49,10 @@ import { KoreaderStatsService } from './koreader-stats.service';
     BookModule,
     BookmarkModule,
     BrowseCountsModule,
+    BookDiscoveryModule,
     DashboardModule,
+    HardcoverModule,
+    LibraryModule,
     OpdsModule,
     PositionConverterModule,
     RecommendationModule,
@@ -67,6 +74,7 @@ import { KoreaderStatsService } from './koreader-stats.service';
     KoreaderBookmarkExchangeService,
     KoreaderBookmarkRepository,
     KoreaderStatsService,
+    KoreaderStoreService,
   ],
   exports: [KoreaderService, KoreaderRepository],
 })
