@@ -145,7 +145,7 @@ function Store:storeRequestIsCurrent(generation)
     return not self.catalog_closed and generation == self.store_request_generation
 end
 
-function Store:storeHomeItems(body, stale, page)
+function Store:storeHomeItems(body, stale, page, refreshing)
     local shelves = {}
     for _, shelf in ipairs((body or {}).personalizedShelves or {}) do
         if shelf.available ~= false and #(shelf.items or {}) > 0 then shelves[#shelves + 1] = shelf end
@@ -157,7 +157,11 @@ function Store:storeHomeItems(body, stale, page)
     local books = Store.mapBooks(section.items)
     Store.overlayDeviceState(self, books)
     local subtitle = section.title or _("Trending this week")
-    if stale then subtitle = subtitle .. " - " .. _("offline cache") end
+    if refreshing then
+        subtitle = subtitle .. " - " .. _("refreshing")
+    elseif stale then
+        subtitle = subtitle .. " - " .. _("offline cache")
+    end
     return self:storeBookItems(books), {
         kind = "store-books",
         title = _("Book Store"),
@@ -171,6 +175,7 @@ function Store:storeHomeItems(body, stale, page)
         store_landing = true,
         store_home = body,
         stale = stale == true,
+        refreshing = refreshing == true,
     }
 end
 
@@ -195,10 +200,11 @@ end
 function Store:loadStoreHome(push)
     local request_generation = self:nextStoreRequestGeneration()
     local cached = self:storeCache()
-    if cached and not NetworkMgr:isConnected() then
-        local items, context = self:storeHomeItems(cached, true)
+    local connected = NetworkMgr:isConnected()
+    if cached then
+        local items, context = self:storeHomeItems(cached, true, nil, connected)
         self:switchTo(context.title, items, context, push)
-        return
+        if not connected then return end
     end
     self:runConnected(function()
         if not self:storeRequestIsCurrent(request_generation) then return end
@@ -209,7 +215,7 @@ function Store:loadStoreHome(push)
         if not body then
             if cached then
                 local items, context = self:storeHomeItems(cached, true)
-                self:switchTo(context.title, items, context, push)
+                self:switchTo(context.title, items, context, false)
             elseif err ~= "cancelled" then
                 self:showRetry(err, function() self:loadStoreHome(push) end)
             end
@@ -217,7 +223,9 @@ function Store:loadStoreHome(push)
         end
         self:cacheStoreHome(body)
         local items, context = self:storeHomeItems(body, false)
-        self:switchTo(context.title, items, context, push)
+        local navigation_push = push
+        if cached then navigation_push = false end
+        self:switchTo(context.title, items, context, navigation_push)
         if push == false then self:mirrorStoreShelf(body) end
         self:resumeStoreAcquisitions()
     end)
