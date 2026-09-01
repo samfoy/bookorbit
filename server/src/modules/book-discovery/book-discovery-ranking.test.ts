@@ -58,7 +58,7 @@ describe('rankExternalBookSearchResults', () => {
   });
 
   it('treats an exact primary-author match as author intent', () => {
-    const criticism = book('criticism', 'Kazuo Ishiguro', 'Barry Lewis');
+    const criticism = book('criticism', 'Kazuo Ishiguro', 'Barry Lewis', { ratingsCount: 0 });
     const novels = [book('remains', 'The Remains of the Day', 'Kazuo Ishiguro'), book('klara', 'Klara and the Sun', 'Kazuo Ishiguro')];
 
     expect(ids('Kazuo Ishiguro', [criticism, ...novels])).toEqual(['remains', 'klara', 'criticism']);
@@ -78,6 +78,27 @@ describe('rankExternalBookSearchResults', () => {
     });
 
     expect(ids('Piranesi', [derivative, exact])).toEqual(['exact', 'guide']);
+  });
+
+  it('keeps a credible exact title ahead of incidental exact-author matches', () => {
+    const exactTitle = book('austen', 'Emma', 'Jane Austen', {
+      hasEbook: true,
+      ratingsCount: 1_200_000,
+      sources: [
+        { source: 'hardcover', externalId: 'austen', url: 'https://hardcover.app/austen' },
+        { source: 'storygraph', externalId: 'austen', url: 'https://thestorygraph.com/austen' },
+      ],
+    });
+    const incidentalAuthorMatches = [book('girls', 'The Girls', 'Emma'), book('daddy', 'Daddy', 'Emma')];
+
+    expect(ids('Emma', [...incidentalAuthorMatches, exactTitle])).toEqual(['austen', 'girls', 'daddy']);
+  });
+
+  it('matches derivative phrases on word boundaries', () => {
+    const preview = book('preview', 'Preview', 'Susan E. Rogers', { ratingsCount: 10_000 });
+    const other = book('other', 'Another Book', 'Susan E. Rogers');
+
+    expect(ids('Susan E Rogers', [other, preview])).toEqual(['preview', 'other']);
   });
 
   it('preserves input order for equal scores', () => {

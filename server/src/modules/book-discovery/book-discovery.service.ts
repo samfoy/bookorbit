@@ -78,15 +78,18 @@ export function rankExternalBookSearchResults(query: string, books: ExternalBook
       const matchingTokens = queryTokens.filter((token) => titleTokens.has(token)).length;
       const titleCoverage = queryTokens.length === 0 ? 0 : matchingTokens / queryTokens.length;
       const titlePrefix = title.startsWith(normalizedQuery);
-      const derivative = DERIVATIVE_TITLE_PHRASES.some((phrase) => title.includes(phrase));
+      const paddedTitle = ` ${title} `;
+      const derivative = DERIVATIVE_TITLE_PHRASES.some((phrase) => paddedTitle.includes(` ${phrase} `));
+      const sources = new Set(book.sources.map((source) => source.source));
+      const credibleExactTitle = exactTitle && (book.hasEbook === true || (book.ratingsCount ?? 0) >= 1_000 || sources.size > 1);
       let intent = 0;
-      if (authorIntent && exactAuthor) intent = 5;
+      if (credibleExactTitle) intent = 6;
+      else if (authorIntent && exactAuthor) intent = 5;
       else if (exactTitle) intent = 4;
       else if (titlePrefix && titleCoverage === 1) intent = 3;
       else if (titleCoverage === 1) intent = 2;
       else if (titleCoverage > 0) intent = 1;
 
-      const sources = new Set(book.sources.map((source) => source.source));
       const rank: SearchRank = {
         intent,
         derivative: derivative ? 1 : 0,
