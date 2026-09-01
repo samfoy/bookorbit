@@ -693,6 +693,7 @@ function Store:startStoreAcquisition(book, library_id, folder_id, source, action
             self.store_starting_jobs[book.externalId] = nil
             self:updateStoreIntention(intent.intent_id, "failed", { error = tostring(err or "acquisition_failed") })
             if err ~= "cancelled" then self:showServerError(err) end
+            if intent.batch_id then self:processStoreBatch(intent.batch_id) end
             return
         end
         local jobs = self:activeStoreJobs()
@@ -809,7 +810,9 @@ function Store:showStoreJob(job)
                     return
                 end
                 if err then self:showServerError(err) end
-                self:pollStoreAcquisition(job.id, job.title)
+                local tracked
+                for _, entry in ipairs(Store.activeStoreJobs(self)) do if entry.id == job.id then tracked = entry; break end end
+                self:pollStoreAcquisition(job.id, job.title, tracked and tracked.intent_id, tracked and tracked.action)
             end)
         end }}
     end
