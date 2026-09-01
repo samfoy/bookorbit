@@ -21,6 +21,8 @@ export interface ExternalBookSearchResult {
   isbn10: string | null;
   isbn13: string | null;
   pageCount: number | null;
+  language?: string | null;
+  publisher?: string | null;
   seriesName: string | null;
   seriesPosition: number | null;
   hasEbook: boolean | null;
@@ -67,6 +69,8 @@ export interface ExternalBookSearchResponse {
 
 export const DISCOVERY_BROWSE_KINDS = ["trending", "genre", "author", "similar"] as const;
 export type DiscoveryBrowseKind = (typeof DISCOVERY_BROWSE_KINDS)[number];
+export const DISCOVERY_BROWSE_SORTS = ["relevance", "rating", "popularity", "newest", "shortest", "longest"] as const;
+export type DiscoveryBrowseSort = (typeof DISCOVERY_BROWSE_SORTS)[number];
 
 export interface DiscoveryBrowseSection {
   id: string;
@@ -129,8 +133,15 @@ export interface BookAcquisitionJob {
   bytesDownloaded: number | null;
   x3Optimized: boolean | null;
   error: string | null;
+  attempts?: BookAcquisitionAttempt[];
   createdAt: string;
   updatedAt: string;
+}
+
+export interface BookAcquisitionAttempt {
+  source: Exclude<BookAcquisitionSource, "auto">;
+  outcome: "request_failed" | "rejected" | "verified";
+  message: string;
 }
 
 export interface BookAcquisitionSourceCapability {

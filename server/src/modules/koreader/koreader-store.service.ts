@@ -1,4 +1,4 @@
-import type { CreateBookAcquisitionRequest, KoreaderStoreConfigResponse, KoreaderStoreShelf } from '@bookorbit/types';
+import type { CreateBookAcquisitionRequest, ExternalBookSearchResult, KoreaderStoreConfigResponse, KoreaderStoreShelf } from '@bookorbit/types';
 import { Permission } from '@bookorbit/types';
 import { BadGatewayException, ForbiddenException, Injectable, PayloadTooLargeException } from '@nestjs/common';
 import type { FastifyReply } from 'fastify';
@@ -19,6 +19,29 @@ import { KoreaderStorePersonalizationService } from './koreader-store-personaliz
 
 const MAX_STORE_COVER_BYTES = 4 * 1024 * 1024;
 const STORE_COVER_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+
+export function applyStoreBrowseFilters(books: ExternalBookSearchResult[], query: BrowseExternalBooksDto): ExternalBookSearchResult[] {
+  const filtered = books.filter((book) => {
+    if (query.minYear !== undefined && (book.publishedYear === null || book.publishedYear < query.minYear)) return false;
+    if (query.maxYear !== undefined && (book.publishedYear === null || book.publishedYear > query.maxYear)) return false;
+    if (query.minPages !== undefined && (book.pageCount === null || book.pageCount < query.minPages)) return false;
+    if (query.maxPages !== undefined && (book.pageCount === null || book.pageCount > query.maxPages)) return false;
+    if (query.ebookOnly && book.hasEbook !== true) return false;
+    if (query.seriesMode === 'series' && !book.seriesName) return false;
+    if (query.seriesMode === 'standalone' && book.seriesName) return false;
+    if (query.language && book.language?.toLowerCase() !== query.language) return false;
+    return true;
+  });
+  const value = (book: ExternalBookSearchResult) => {
+    if (query.sort === 'rating') return book.rating ?? -1;
+    if (query.sort === 'popularity') return book.ratingsCount ?? -1;
+    if (query.sort === 'newest') return book.publishedYear ?? -1;
+    if (query.sort === 'shortest' || query.sort === 'longest') return book.pageCount ?? Number.MAX_SAFE_INTEGER;
+    return 0;
+  };
+  if (query.sort !== 'relevance') filtered.sort((a, b) => (query.sort === 'shortest' ? value(a) - value(b) : value(b) - value(a)));
+  return filtered;
+}
 
 @Injectable()
 export class KoreaderStoreService {
@@ -61,7 +84,13 @@ export class KoreaderStoreService {
   async browse(user: RequestUser, query: BrowseExternalBooksDto) {
     const response = await this.catalogBrowse.browse(user.id, query);
     const items = await this.phase2.enrichResults(user, response.items);
-    return { ...response, items: items.filter((book) => !query.hideRead || !book.state.alreadyRead) };
+    return {
+      ...response,
+      items: applyStoreBrowseFilters(
+        items.filter((book) => !query.hideRead || !book.state.alreadyRead),
+        query,
+      ),
+    };
   }
 
   async search(user: RequestUser, query: SearchExternalBooksDto & { hideRead?: boolean }) {

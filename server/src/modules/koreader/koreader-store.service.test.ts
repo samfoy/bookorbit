@@ -3,7 +3,7 @@ import { ForbiddenException } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
 
 import { makeRequestUser } from '../upload/test-helpers';
-import { KoreaderStoreService } from './koreader-store.service';
+import { applyStoreBrowseFilters, KoreaderStoreService } from './koreader-store.service';
 
 const uploadUser = makeRequestUser({ id: 17, permissions: [Permission.LibraryUpload] });
 const deniedUser = makeRequestUser({ id: 18, permissions: [] });
@@ -49,6 +49,25 @@ function makeService() {
 }
 
 describe('KoreaderStoreService', () => {
+  it('applies bounded sort and metadata filters without inventing unsupported values', () => {
+    const books = [
+      { title: 'Long old', rating: 4.8, ratingsCount: 10, publishedYear: 1990, pageCount: 700, hasEbook: true, seriesName: 'Saga' },
+      { title: 'Short new', rating: 4.2, ratingsCount: 100, publishedYear: 2026, pageCount: 180, hasEbook: true, seriesName: null },
+      { title: 'No ebook', rating: 5, ratingsCount: 1, publishedYear: 2025, pageCount: 100, hasEbook: false, seriesName: null },
+    ];
+    expect(
+      applyStoreBrowseFilters(
+        books as never,
+        {
+          sort: 'shortest',
+          minYear: 2020,
+          maxPages: 300,
+          ebookOnly: true,
+          seriesMode: 'standalone',
+        } as never,
+      ).map((book) => book.title),
+    ).toEqual(['Short new']);
+  });
   it('delegates home, browse, and search with the authenticated user id', async () => {
     const { service, discovery, browse } = makeService();
     browse.getBrowseHome.mockResolvedValue({ generatedAt: 'now', trending: { items: [] }, genreShelves: [] });

@@ -47,6 +47,8 @@ local function externalBook(book)
         isbn10 = book.isbn10,
         isbn13 = book.isbn13,
         pageCount = book.pageCount,
+        language = book.language,
+        publisher = book.publisher,
         seriesName = book.seriesName,
         seriesIndex = book.seriesPosition,
         genres = book.genres or {},
@@ -239,6 +241,9 @@ function Store:loadStoreBrowse(kind, value, page, title, push)
                 page = page,
                 pageSize = STORE_PAGE_SIZE,
                 hideRead = self:storeHideRead(),
+                sort = self.settings.store_sort or "relevance",
+                ebookOnly = self.settings.store_ebook_only == true,
+                seriesMode = self.settings.store_series_mode,
             })
         end)
         if not self:storeRequestIsCurrent(request_generation) then return end
@@ -322,6 +327,9 @@ function Store:storeDescription(book)
     if book.publishedYear then lines[#lines + 1] = tostring(book.publishedYear) end
     if book.rating then lines[#lines + 1] = T(_("Rating: %1"), tostring(book.rating)) end
     if book.pageCount then lines[#lines + 1] = T(_("Pages: %1"), tostring(book.pageCount)) end
+    if book.language then lines[#lines + 1] = T(_("Language: %1"), book.language) end
+    if book.publisher then lines[#lines + 1] = T(_("Publisher: %1"), book.publisher) end
+    if book.isbn13 then lines[#lines + 1] = T(_("ISBN: %1"), book.isbn13) end
     if book.description then lines[#lines + 1] = "\n" .. book.description end
     return table.concat(lines, "\n")
 end
@@ -795,8 +803,10 @@ function Store:showStoreJob(job)
             end)
         end }}
     end
+    local attempt_lines = {}
+    for _, attempt in ipairs(job.attempts or {}) do attempt_lines[#attempt_lines + 1] = attempt.source .. ": " .. attempt.message end
     dialog = ButtonDialog:new{
-        title = T(_("%1\n\nStatus: %2"), job.title or _("Book"), job.status or _("unknown")),
+        title = T(_("%1\n\nStatus: %2\n%3"), job.title or _("Book"), job.status or _("unknown"), table.concat(attempt_lines, "\n")),
         buttons = buttons,
     }
     UIManager:show(dialog)
@@ -858,11 +868,24 @@ end
 function Store:showStoreActions()
     local context = self.current_context or {}
     local dialog
+    local sorts = { "relevance", "rating", "popularity", "newest", "shortest", "longest" }
+    local function nextSort()
+        local current = self.settings.store_sort or "relevance"
+        for index, value in ipairs(sorts) do
+            if value == current then return sorts[index % #sorts + 1] end
+        end
+        return "relevance"
+    end
     dialog = ButtonDialog:new{
         title = _("Book Store"),
         buttons = {
             {{ text = _("Search books"), callback = function() UIManager:close(dialog); self:promptStoreSearch() end }},
             {{ text = _("Browse genres"), callback = function() UIManager:close(dialog); self:showStoreGenres(context.store_home) end }},
+            {{ text = T(_("Sort: %1"), self.settings.store_sort or "relevance"), callback = function()
+                self:persistSetting("store_sort", nextSort()); UIManager:close(dialog); self:reloadStoreContext(context)
+            end }, { text = self.settings.store_ebook_only and _("EPUB only: On") or _("EPUB only: Off"), callback = function()
+                self:persistSetting("store_ebook_only", not self.settings.store_ebook_only); UIManager:close(dialog); self:reloadStoreContext(context)
+            end }},
             {{ text = _("Get all visible"), callback = function()
                 UIManager:close(dialog); self:startStoreBatch(context.books or {}, "download")
             end }, { text = _("Get unread series"), callback = function()

@@ -135,6 +135,37 @@ export class KoreaderStorePersonalizationService {
         message: null,
       });
     }
+    const currentYear = new Date().getUTCFullYear();
+    const curated = [
+      {
+        id: 'new-releases',
+        title: 'New releases',
+        subtitle: 'Published in the last two years',
+        items: candidates.filter((book) => (book.publishedYear ?? 0) >= currentYear - 1),
+      },
+      {
+        id: 'short-reads',
+        title: 'Short reads',
+        subtitle: '300 pages or fewer',
+        items: candidates.filter((book) => (book.pageCount ?? Number.MAX_SAFE_INTEGER) <= 300),
+      },
+      {
+        id: 'highly-rated',
+        title: 'Highly rated',
+        subtitle: 'Rated 4.3 or higher',
+        items: candidates.filter((book) => (book.rating ?? 0) >= 4.3),
+      },
+      {
+        id: 'new-from-your-authors',
+        title: 'New from authors you read',
+        subtitle: 'Author matches from your real reading history',
+        items: forYou.filter((book) => book.recommendationReason?.startsWith('More by ')),
+      },
+    ];
+    for (const shelf of curated) {
+      const items = shelf.items.filter((book) => !book.state?.alreadyRead && !book.state?.alreadyOwned).slice(0, 12);
+      if (items.length > 0) shelves.push({ ...shelf, kind: 'curated', items, available: true, message: null });
+    }
     return shelves;
   }
 

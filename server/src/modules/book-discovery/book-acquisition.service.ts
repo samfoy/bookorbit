@@ -8,7 +8,7 @@ import type { RequestUser } from '../../common/types/request-user';
 import { LibraryService } from '../library/library.service';
 import { UploadService } from '../upload/upload.service';
 import { UploadStorageService } from '../upload/upload-storage.service';
-import { EpubAcquisitionDownloaderService } from './epub-acquisition-downloader.service';
+import { AcquisitionAttemptsError, EpubAcquisitionDownloaderService } from './epub-acquisition-downloader.service';
 import { X3EpubOptimizerService } from './x3-epub-optimizer.service';
 
 const JOB_RETENTION_MS = 24 * 60 * 60 * 1000;
@@ -111,7 +111,7 @@ export class BookAcquisitionService {
       const download = await this.downloader.download(request, internal.abortController.signal);
       internal.abortController.signal.throwIfAborted();
       tempPath = download.tempPath;
-      this.update(internal, { source: download.source, bytesDownloaded: download.sizeBytes, status: 'optimizing' });
+      this.update(internal, { source: download.source, bytesDownloaded: download.sizeBytes, attempts: download.attempts, status: 'optimizing' });
 
       const optimization = await this.optimizer.optimize(download.tempPath);
       internal.abortController.signal.throwIfAborted();
@@ -131,7 +131,11 @@ export class BookAcquisitionService {
     } catch (error) {
       const cancelled = internal.abortController.signal.aborted;
       const message = cancelled ? 'Acquisition cancelled' : this.publicError(error);
-      this.update(internal, { status: cancelled ? 'cancelled' : 'failed', error: cancelled ? null : message });
+      this.update(internal, {
+        status: cancelled ? 'cancelled' : 'failed',
+        error: cancelled ? null : message,
+        attempts: error instanceof AcquisitionAttemptsError ? error.attempts : internal.public.attempts,
+      });
       const errorClass = error instanceof Error ? error.constructor.name : 'Error';
       this.logger.warn(
         `[book_acquisition.run] [fail] userId=${user.id} libraryId=${request.libraryId} jobId=${internal.public.id} durationMs=${Date.now() - startedAt} errorClass=${errorClass} error="${sanitizeLogValue(message)}" - acquisition failed`,

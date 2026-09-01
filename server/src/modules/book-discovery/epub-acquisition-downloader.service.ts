@@ -1,4 +1,4 @@
-import type { BookAcquisitionSource, BookAcquisitionSourceCapability } from '@bookorbit/types';
+import type { BookAcquisitionAttempt, BookAcquisitionSource, BookAcquisitionSourceCapability } from '@bookorbit/types';
 import { Injectable, NotFoundException, PayloadTooLargeException, ServiceUnavailableException } from '@nestjs/common';
 import { Readable, Transform } from 'stream';
 
@@ -25,6 +25,13 @@ export interface VerifiedEpubDownload {
   source: Exclude<AcquisitionDownloadSource, 'auto'>;
   md5: string;
   verifiedTitle: string;
+  attempts: BookAcquisitionAttempt[];
+}
+
+export class AcquisitionAttemptsError extends NotFoundException {
+  constructor(public readonly attempts: BookAcquisitionAttempt[]) {
+    super('No verified EPUB was found for this book');
+  }
 }
 
 @Injectable()
@@ -55,6 +62,7 @@ export class EpubAcquisitionDownloaderService {
     }
 
     const candidates = await this.libgen.findCandidates(request, signal);
+    const attemptLog: BookAcquisitionAttempt[] = [];
     for (const candidate of candidates) {
       const sources = this.sourceOrder(request.source);
       for (const source of sources) {
@@ -67,16 +75,21 @@ export class EpubAcquisitionDownloaderService {
               source === 'libgen' ? await this.libgen.downloadAttempt(candidate, attempt, signal) : await this.annas.download(candidate.md5, signal);
           } catch (error) {
             if (signal?.aborted) throw error;
+            attemptLog.push({ source, outcome: 'request_failed', message: 'Download source did not respond' });
             continue;
           }
 
           const verified = await this.persistAndVerify(response, source, candidate, request, signal);
-          if (verified) return verified;
+          if (verified) {
+            attemptLog.push({ source, outcome: 'verified', message: 'EPUB metadata verified' });
+            return { ...verified, attempts: attemptLog };
+          }
+          attemptLog.push({ source, outcome: 'rejected', message: 'Candidate failed EPUB metadata verification' });
         }
       }
     }
 
-    throw new NotFoundException('No verified EPUB was found for this book');
+    throw new AcquisitionAttemptsError(attemptLog);
   }
 
   private sourceOrder(source: AcquisitionDownloadSource): Array<Exclude<AcquisitionDownloadSource, 'auto'>> {
@@ -91,7 +104,7 @@ export class EpubAcquisitionDownloaderService {
     candidate: LibgenCandidate,
     request: EpubAcquisitionDownloadRequest,
     signal?: AbortSignal,
-  ): Promise<VerifiedEpubDownload | null> {
+  ): Promise<Omit<VerifiedEpubDownload, 'attempts'> | null> {
     if (!response.ok || !response.body) return null;
 
     const maxBytes = (await this.appSettings.getMaxUploadSizeMb()) * 1024 * 1024;
