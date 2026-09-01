@@ -171,6 +171,15 @@ export class KoreaderStorePersonalizationService {
       const items = shelf.items.filter((book) => !book.state?.alreadyRead && !book.state?.alreadyOwned).slice(0, 12);
       if (items.length > 0) shelves.push({ ...shelf, kind: 'curated', items, available: true, message: null });
     }
+    shelves.push({
+      id: 'award-winners',
+      title: 'Award winners',
+      subtitle: null,
+      kind: 'curated',
+      items: [],
+      available: false,
+      message: 'The current provider catalog does not expose a verified award-winner tag feed',
+    });
     return shelves;
   }
 

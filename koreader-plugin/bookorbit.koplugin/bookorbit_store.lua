@@ -167,6 +167,7 @@ function Store:storeHomeItems(body, stale, page)
         page_count = math.max(1, #shelves),
         store_kind = section.kind or "trending",
         store_value = section.value,
+        store_shelf_id = section.id,
         store_landing = true,
         store_home = body,
         stale = stale == true,
@@ -217,6 +218,7 @@ function Store:loadStoreHome(push)
         self:cacheStoreHome(body)
         local items, context = self:storeHomeItems(body, false)
         self:switchTo(context.title, items, context, push)
+        if push == false then self:mirrorStoreShelf(body) end
         self:resumeStoreAcquisitions()
     end)
 end
@@ -606,6 +608,30 @@ function Store:startStoreBatch(books, action)
     end)
 end
 
+function Store:mirrorStoreShelf(home)
+    local wanted = self.settings.store_mirrored_shelf_id
+    if not wanted then return end
+    for _, shelf in ipairs((home or {}).personalizedShelves or {}) do
+        if shelf.id == wanted and shelf.available ~= false then
+            local books = Store.mapBooks(shelf.items)
+            Store.overlayDeviceState(self, books)
+            self:startStoreBatch(books, "download")
+            return
+        end
+    end
+end
+
+function Store:showStoreShelfAvailability(home)
+    local lines = {}
+    for _, shelf in ipairs((home or {}).personalizedShelves or {}) do
+        if shelf.available == false and shelf.message then lines[#lines + 1] = shelf.title .. ": " .. shelf.message end
+    end
+    UIManager:show(TextViewer:new{
+        title = _("Shelf availability"),
+        text = #lines > 0 and table.concat(lines, "\n\n") or _("All advertised shelves are available."),
+    })
+end
+
 function Store:processStoreBatch(batch_id)
     for _, intent in ipairs(self:storeIntentions()) do
         if intent.batch_id == batch_id and intent.status == "acquiring" then return end
@@ -916,6 +942,12 @@ function Store:showStoreActions()
             end }},
             {{ text = _("Preview finished-book cleanup"), callback = function()
                 UIManager:close(dialog); self:showStoreCleanupPreview()
+            end }},
+            {{ text = self.settings.store_mirrored_shelf_id == context.store_shelf_id and _("Stop mirroring this shelf") or _("Mirror this shelf on refresh"), callback = function()
+                local value = self.settings.store_mirrored_shelf_id == context.store_shelf_id and nil or context.store_shelf_id
+                self:persistSetting("store_mirrored_shelf_id", value); UIManager:close(dialog)
+            end }, { text = _("Shelf availability"), callback = function()
+                UIManager:close(dialog); self:showStoreShelfAvailability(context.store_home)
             end }},
             {{ text = self:storeHideRead() and _("Show read books") or _("Hide read books"), callback = function()
                 UIManager:close(dialog)
