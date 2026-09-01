@@ -79,6 +79,12 @@ export class EpubAcquisitionDownloaderService {
             continue;
           }
 
+          if (!response.ok || !response.body) {
+            await response.body?.cancel();
+            attemptLog.push({ source, outcome: 'request_failed', message: `Download source returned HTTP ${response.status}` });
+            continue;
+          }
+
           const verified = await this.persistAndVerify(response, source, candidate, request, signal);
           if (verified) {
             attemptLog.push({ source, outcome: 'verified', message: 'EPUB metadata verified' });

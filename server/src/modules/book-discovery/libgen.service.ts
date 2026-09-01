@@ -7,7 +7,7 @@ import { fetchWithSafeRedirects } from './safe-remote-fetch.util';
 const USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36';
 const LIBGEN_MIRRORS = ['https://libgen.li', 'https://libgen.vg'] as const;
 const LIBGEN_CDNS = ['https://cdn4.booksdl.lc', 'https://cdn3.booksdl.lc', 'https://cdn2.booksdl.lc'] as const;
-const MAX_CANDIDATES = 5;
+const MAX_CANDIDATES = 12;
 
 export interface LibgenSearchRequest {
   title: string;

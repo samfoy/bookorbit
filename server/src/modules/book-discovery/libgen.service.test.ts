@@ -71,6 +71,18 @@ describe('LibgenService', () => {
     ]);
   });
 
+  it('keeps more than five exact EPUB candidates so a stale storage record cannot hide later working copies', async () => {
+    const rows = Array.from({ length: 8 }, (_, index) => {
+      const md5 = String(index + 1).repeat(32);
+      return `<tr><td><a href="/edition.php?id=${index + 1}">Klara and the Sun</a> Kazuo Ishiguro English epub <a href="/ads.php?md5=${md5}">Libgen</a></td></tr>`;
+    }).join('');
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(`<table>${rows}</table>`, { status: 200 })));
+
+    const candidates = await new LibgenService().findCandidates({ title: 'Klara and the Sun', authors: ['Kazuo Ishiguro'] });
+
+    expect(candidates).toHaveLength(8);
+  });
+
   it('resolves a fresh LibGen key immediately before a CDN download attempt', async () => {
     const fetchMock = vi
       .fn()

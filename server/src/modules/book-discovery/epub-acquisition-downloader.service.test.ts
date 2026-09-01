@@ -74,6 +74,39 @@ describe('EpubAcquisitionDownloaderService', () => {
     expect(annas.download).not.toHaveBeenCalled();
   });
 
+  it('classifies upstream HTTP failures as request failures rather than metadata rejections', async () => {
+    const candidate = {
+      md5: MD5,
+      format: 'epub' as const,
+      mirror: 'https://libgen.li',
+      description: 'Klara and the Sun Kazuo Ishiguro English epub',
+    };
+    const libgen = {
+      findCandidates: vi.fn().mockResolvedValue([candidate]),
+      downloadAttemptCount: 2,
+      downloadAttempt: vi
+        .fn()
+        .mockResolvedValueOnce(new Response('unavailable', { status: 503 }))
+        .mockResolvedValueOnce(new Response('error', { status: 500 })),
+    };
+    const annas = { isConfigured: vi.fn().mockReturnValue(false), download: vi.fn() };
+    const appSettings = { getMaxUploadSizeMb: vi.fn().mockResolvedValue(100) };
+    const storage = new UploadStorageService(appSettings as never);
+    const service = new EpubAcquisitionDownloaderService(libgen as never, annas as never, storage, appSettings as never);
+
+    try {
+      await service.download({ title: 'Klara and the Sun', authors: ['Kazuo Ishiguro'], source: 'libgen' });
+      expect.unreachable('expected acquisition to fail');
+    } catch (error) {
+      expect(error).toMatchObject({
+        attempts: [
+          { source: 'libgen', outcome: 'request_failed', message: 'Download source returned HTTP 503' },
+          { source: 'libgen', outcome: 'request_failed', message: 'Download source returned HTTP 500' },
+        ],
+      });
+    }
+  });
+
   it('rejects an embedded author whose surname only contains the requested surname', async () => {
     const epub = await makeEpub('The Shining', 'Stephen Kingsley');
     const candidate = {
