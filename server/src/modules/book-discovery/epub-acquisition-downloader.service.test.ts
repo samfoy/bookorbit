@@ -107,6 +107,29 @@ describe('EpubAcquisitionDownloaderService', () => {
     }
   });
 
+  it('rejects a different author who only shares the requested surname', async () => {
+    const epub = await makeEpub('The Shining', 'Joe King');
+    const candidate = {
+      md5: MD5,
+      format: 'epub' as const,
+      mirror: 'https://libgen.li',
+      description: 'The Shining Stephen King English epub',
+    };
+    const libgen = {
+      findCandidates: vi.fn().mockResolvedValue([candidate]),
+      downloadAttemptCount: 1,
+      downloadAttempt: vi.fn().mockImplementation(() => Promise.resolve(new Response(new Uint8Array(epub), { status: 200 }))),
+    };
+    const annas = { isConfigured: vi.fn().mockReturnValue(false), download: vi.fn() };
+    const appSettings = { getMaxUploadSizeMb: vi.fn().mockResolvedValue(100) };
+    const storage = new UploadStorageService(appSettings as never);
+    const service = new EpubAcquisitionDownloaderService(libgen as never, annas as never, storage, appSettings as never);
+
+    await expect(service.download({ title: 'The Shining', authors: ['Stephen King'], source: 'libgen' })).rejects.toThrow(
+      'No verified EPUB was found for this book',
+    );
+  });
+
   it('rejects an embedded author whose surname only contains the requested surname', async () => {
     const epub = await makeEpub('The Shining', 'Stephen Kingsley');
     const candidate = {

@@ -144,11 +144,19 @@ export class EpubAcquisitionDownloaderService {
   private authorMatches(requested: string[], embedded: string[]): boolean {
     if (requested.length === 0) return true;
     if (embedded.length === 0) return false;
-    const embeddedNames = embedded.map(normalizeBookText);
+    const embeddedNames = embedded.map(
+      (name) =>
+        new Set(
+          normalizeBookText(name)
+            .split(' ')
+            .filter((word) => word.length > 1),
+        ),
+    );
     return requested.some((author) => {
-      const normalized = normalizeBookText(author);
-      const lastName = normalized.split(' ').at(-1) ?? normalized;
-      return lastName.length > 1 && embeddedNames.some((candidate) => candidate.split(' ').includes(lastName));
+      const requestedWords = normalizeBookText(author)
+        .split(' ')
+        .filter((word) => word.length > 1);
+      return requestedWords.length > 0 && embeddedNames.some((candidate) => requestedWords.every((word) => candidate.has(word)));
     });
   }
 

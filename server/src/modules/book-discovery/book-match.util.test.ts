@@ -13,6 +13,10 @@ describe('book acquisition matching', () => {
     expect(titleMatchesRequestedBook('The Shining', 'Doctor Sleep')).toBe(false);
   });
 
+  it('rejects a parenthesized later volume when the request has no volume', () => {
+    expect(titleMatchesRequestedBook('The Shining', 'The Shining (Book 2)')).toBe(false);
+  });
+
   it('accepts the requested numbered book with a series subtitle', () => {
     expect(titleMatchesRequestedBook('Morning Star', 'Morning Star: Book III of the Red Rising Trilogy')).toBe(true);
   });

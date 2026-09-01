@@ -76,6 +76,8 @@ export function titleMatchesRequestedBook(requested: string, candidate: string):
   if (requestedCoverage < 0.7 || candidateCoverage < 0.7) return false;
 
   if (requestedVolume === null && candidateVolume !== null && candidateVolume > 1) {
+    if (/\([^)]*\b(?:book|vol|volume|part|no)\s*[ivx\d]+\b[^)]*\)/i.test(candidate)) return false;
+
     const separated = /\s-\s*\d{1,3}\s*-\s/.exec(candidate);
     if (separated?.index !== undefined) {
       const suffix = normalizeBookText(candidate.slice(separated.index + separated[0].length));
