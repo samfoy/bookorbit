@@ -361,7 +361,7 @@ end
 
 function MainMenu:storeMenuSupported()
     local known = self:knownServerCapabilities(self.catalog_browser)
-    return known ~= nil and known.catalogStore == true
+    return known == nil or known.catalogStore == true
 end
 
 function MainMenu:dashboardSectionItems(index, catalog)

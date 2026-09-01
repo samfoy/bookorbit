@@ -130,6 +130,10 @@ assertSeparator(items, 5, false, "file manager setup has no trailing separator")
 assertEqual(hasItem(items, "Open dashboard"), true, "logged-in menu shows dashboard")
 assertEqual(hasItem(items, "Book Store"), true, "logged-in menu shows native store")
 
+advertised_capabilities = nil
+local unknown_items = menuItems(newPlugin(true))
+assertEqual(hasItem(unknown_items, "Book Store"), true, "unknown server capability keeps direct Store entry visible")
+
 advertised_capabilities = {}
 local legacy_items = menuItems(newPlugin(true))
 assertEqual(hasItem(legacy_items, "Book Store"), false, "legacy server menu hides unsupported Store")

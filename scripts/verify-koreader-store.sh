@@ -26,7 +26,7 @@ for needle, text in [
     ('store/search', controller),
     ('store/acquisitions', controller),
     ('catalogStore', package),
-    ('local PLUGIN_VERSION = "1.7.1"', main),
+    ('local PLUGIN_VERSION = "1.7.2"', main),
     ('catalogStoreHome', api),
     ('catalogStoreSearch', api),
     ('catalogStoreStartAcquisition', api),
