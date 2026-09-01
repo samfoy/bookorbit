@@ -313,7 +313,7 @@ function Store:loadStoreSearch(query, push)
     self:runConnected(function()
         if not self:storeRequestIsCurrent(request_generation) then return end
         local body, err = self:fetch(_("Searching books..."), function()
-            return self.client:catalogStoreSearch(query, "hardcover,storygraph", Store.storeHideRead(self))
+            return self.client:catalogStoreSearch(query, "hardcover,storygraph", false)
         end)
         if not self:storeRequestIsCurrent(request_generation) then return end
         if not body then
