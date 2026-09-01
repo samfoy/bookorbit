@@ -17,6 +17,7 @@ import { HardcoverReadBooksService } from './hardcover-read-books.service';
 import { HardcoverRepository } from './hardcover.repository';
 import { HardcoverSettingsService } from './hardcover-settings.service';
 import { HardcoverSyncService } from './hardcover-sync.service';
+import { HardcoverTrackerService } from './hardcover-tracker.service';
 
 @Module({
   imports: [AchievementModule, BookModule, LibraryModule, UserBookStatusModule],
@@ -34,7 +35,8 @@ import { HardcoverSyncService } from './hardcover-sync.service';
     HardcoverImportService,
     HardcoverAutoSyncSchedulerService,
     HardcoverEventListener,
+    HardcoverTrackerService,
   ],
-  exports: [HardcoverSyncService, HardcoverSettingsService, HardcoverCatalogService, HardcoverCatalogBrowseService],
+  exports: [HardcoverSyncService, HardcoverSettingsService, HardcoverCatalogService, HardcoverCatalogBrowseService, HardcoverTrackerService],
 })
 export class HardcoverModule {}

@@ -1,4 +1,4 @@
-import type { CreateBookAcquisitionRequest, KoreaderStoreConfigResponse } from '@bookorbit/types';
+import type { CreateBookAcquisitionRequest, KoreaderStoreConfigResponse, KoreaderStoreShelf } from '@bookorbit/types';
 import { Permission } from '@bookorbit/types';
 import { BadGatewayException, ForbiddenException, Injectable, PayloadTooLargeException } from '@nestjs/common';
 import type { FastifyReply } from 'fastify';
@@ -11,7 +11,9 @@ import type { BrowseExternalBooksDto } from '../book-discovery/dto/browse-extern
 import type { BrowseHomeDto } from '../book-discovery/dto/browse-home.dto';
 import type { SearchExternalBooksDto } from '../book-discovery/dto/search-external-books.dto';
 import { HardcoverCatalogBrowseService } from '../hardcover/hardcover-catalog-browse.service';
+import { HardcoverTrackerService } from '../hardcover/hardcover-tracker.service';
 import { LibraryService } from '../library/library.service';
+import { StorygraphTrackerService } from '../storygraph/storygraph-tracker.service';
 import { KoreaderStorePhase2Service } from './koreader-store-phase2.service';
 import { KoreaderStorePersonalizationService } from './koreader-store-personalization.service';
 
@@ -27,6 +29,8 @@ export class KoreaderStoreService {
     private readonly libraries: LibraryService,
     private readonly phase2: KoreaderStorePhase2Service,
     private readonly personalization: KoreaderStorePersonalizationService,
+    private readonly hardcoverTrackers: HardcoverTrackerService,
+    private readonly storygraphTrackers: StorygraphTrackerService,
   ) {}
 
   async getHome(user: RequestUser, query: BrowseHomeDto) {
@@ -41,11 +45,17 @@ export class KoreaderStoreService {
     };
     const trending = enrichSection(home.trending);
     const genreShelves = home.genreShelves.map(enrichSection);
-    const personalizedShelves = await this.personalization.getShelves(
-      user,
-      [trending, ...genreShelves].flatMap((section) => section.items),
-    );
-    return { ...home, trending, genreShelves, personalizedShelves };
+    const candidates = [trending, ...genreShelves].flatMap((section) => section.items);
+    const [personalizedShelves, hardcoverShelves, storygraphShelves] = await Promise.all([
+      this.personalization.getShelves(user, candidates),
+      this.hardcoverTrackers.getShelves(user.id),
+      this.storygraphTrackers.getShelves(user.id),
+    ]);
+    const trackerShelves: KoreaderStoreShelf[] = [];
+    for (const shelf of [...hardcoverShelves, ...storygraphShelves]) {
+      trackerShelves.push({ ...shelf, items: shelf.items.length > 0 ? await this.phase2.enrichResults(user, shelf.items) : [] });
+    }
+    return { ...home, trending, genreShelves, personalizedShelves: [...personalizedShelves, ...trackerShelves] };
   }
 
   async browse(user: RequestUser, query: BrowseExternalBooksDto) {

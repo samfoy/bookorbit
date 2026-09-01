@@ -23,7 +23,11 @@ export class StorygraphCatalogService {
     if (response.redirectedToSignIn) throw new UnauthorizedException('StoryGraph session has expired');
     if (response.status !== 200) return [];
 
-    const $ = cheerio.load(response.html);
+    return this.parseBooks(response.html);
+  }
+
+  parseBooks(html: string): ExternalBookSearchResult[] {
+    const $ = cheerio.load(html);
     const books: ExternalBookSearchResult[] = [];
     const seen = new Set<string>();
 

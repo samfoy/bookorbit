@@ -161,6 +161,11 @@ export class HardcoverCatalogBrowseService {
     return this.browseSimilar(userId, token, request, readIds);
   }
 
+  async getBooksByIds(userId: number, ids: number[]): Promise<ExternalBookSearchResult[]> {
+    const token = await this.requireToken(userId);
+    return this.fetchBooksByIds(userId, token, ids.slice(0, 100));
+  }
+
   private async browseTrending(
     userId: number,
     token: string,

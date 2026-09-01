@@ -13,6 +13,7 @@ import { StorygraphQueueService } from './storygraph-queue.service';
 import { StorygraphRepository } from './storygraph.repository';
 import { StorygraphSettingsService } from './storygraph-settings.service';
 import { StorygraphSyncService } from './storygraph-sync.service';
+import { StorygraphTrackerService } from './storygraph-tracker.service';
 
 @Module({
   imports: [AchievementModule, BookModule, LibraryModule],
@@ -27,7 +28,8 @@ import { StorygraphSyncService } from './storygraph-sync.service';
     StorygraphSyncService,
     StorygraphAutoSyncSchedulerService,
     StorygraphEventListener,
+    StorygraphTrackerService,
   ],
-  exports: [StorygraphSyncService, StorygraphSettingsService, StorygraphCatalogService],
+  exports: [StorygraphSyncService, StorygraphSettingsService, StorygraphCatalogService, StorygraphTrackerService],
 })
 export class StorygraphModule {}

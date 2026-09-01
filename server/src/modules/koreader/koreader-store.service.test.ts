@@ -24,6 +24,8 @@ function makeService() {
     enrichResults: vi.fn((_user, books) => Promise.resolve(books.map((book: object) => ({ ...book, state: { alreadyRead: false } })))),
   };
   const personalization = { getShelves: vi.fn().mockResolvedValue([]) };
+  const hardcoverTrackers = { getShelves: vi.fn().mockResolvedValue([]) };
+  const storygraphTrackers = { getShelves: vi.fn().mockResolvedValue([]) };
   return {
     service: new KoreaderStoreService(
       discovery as never,
@@ -32,6 +34,8 @@ function makeService() {
       libraries as never,
       phase2 as never,
       personalization as never,
+      hardcoverTrackers as never,
+      storygraphTrackers as never,
     ),
     discovery,
     browse,
@@ -39,6 +43,8 @@ function makeService() {
     libraries,
     phase2,
     personalization,
+    hardcoverTrackers,
+    storygraphTrackers,
   };
 }
 
