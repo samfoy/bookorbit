@@ -88,7 +88,7 @@ class Handler(BaseHTTPRequestHandler):
         path = parsed.path
         query = parse_qs(parsed.query)
         if path.endswith("/koreader/plugin/version"):
-            self.send_json({"pluginVersion": "1.7.0", "serverVersion": "emulator", "capabilities": ["catalogStore", "catalogStorePhase2"]})
+            self.send_json({"pluginVersion": "1.7.1", "serverVersion": "emulator", "capabilities": ["catalogStore", "catalogStorePhase2"]})
         elif path.endswith("/koreader/plugin/catalog/dashboard"):
             self.send_json(
                 {

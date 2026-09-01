@@ -95,7 +95,7 @@ describe('KOReader plugin update source wiring', () => {
     const store = await readPluginFile('bookorbit_store.lua');
     const detail = await readPluginFile('bookorbit_catalog_detail.lua');
 
-    expect(main).toContain('local PLUGIN_VERSION = "1.7.0"');
+    expect(main).toContain('local PLUGIN_VERSION = "1.7.1"');
     expect(catalog).toContain('local BookOrbitStore = require("bookorbit_store")');
     expect(catalog).toContain('BookOrbitStore.install(BookOrbitCatalog)');
     expect(catalog).toContain('if self.nextStoreRequestGeneration then self:nextStoreRequestGeneration() end');

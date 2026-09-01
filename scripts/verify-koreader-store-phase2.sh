@@ -27,13 +27,13 @@ anchors=[
  'For You', 'Up Next in Your Series', 'recommendationReason', 'alreadyOwned', 'alreadyRead',
  'Hardcover', 'StoryGraph', 'Get and open', 'Retry another', 'Get all visible',
  'Get unread series', 'free', 'Wi-Fi', 'charging', 'Remove from device',
- 'cleanup', 'cancel remaining', 'missing', '1.7.0',
+ 'cleanup', 'cancel remaining', 'missing', '1.7.1',
 ]
 for anchor in anchors:
  if anchor.lower() not in all_text.lower(): raise SystemExit('missing Phase 2 acceptance anchor: '+anchor)
 main=(root/'koreader-plugin/bookorbit.koplugin/main.lua').read_text()
 package=(root/'server/src/modules/koreader/koreader-package.service.ts').read_text()
-assert 'local PLUGIN_VERSION = "1.7.0"' in main
+assert 'local PLUGIN_VERSION = "1.7.1"' in main
 assert 'catalogStorePhase2' in package
 PY
 
