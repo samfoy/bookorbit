@@ -23,6 +23,16 @@ def click(x: int, y: int, pause: float = 0.5) -> None:
     time.sleep(pause)
 
 
+def open_dashboard_menu() -> None:
+    if os.environ.get("DISABLE_TOUCH") == "1":
+        key("Return", pause=0.5)
+        key("Up", pause=0.1)
+        key("Up", pause=0.1)
+        key("Return", pause=0.75)
+        return
+    click(30, 32, pause=0.75)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -45,14 +55,17 @@ def main() -> None:
         key("F1")
         return
     if args.scenario == "bookorbit-menu":
-        # The auto-opened BookOrbit dashboard owns the upper-left hamburger.
-        click(30, 32)
+        open_dashboard_menu()
         return
     if args.scenario == "store-home":
         width = int(os.environ.get("KOREADER_EMULATOR_WIDTH", "758"))
         height = int(os.environ.get("KOREADER_EMULATOR_HEIGHT", "1024"))
-        click(round(width * 0.04), round(height * 0.031))
-        click(round(width * 0.50), round(height * 0.161), pause=3.0)
+        open_dashboard_menu()
+        if os.environ.get("DISABLE_TOUCH") == "1":
+            key("Up")
+            key("Return", pause=3.0)
+        else:
+            click(round(width * 0.50), round(height * 0.161), pause=3.0)
         return
     if args.scenario == "store-detail":
         width = int(os.environ.get("KOREADER_EMULATOR_WIDTH", "758"))

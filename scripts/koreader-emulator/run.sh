@@ -17,6 +17,7 @@ if [[ ${1:-} != --inside-container ]]; then
   DPI=${KOREADER_EMULATOR_DPI:-300}
   SCENARIO=${KOREADER_EMULATOR_SCENARIO:-idle}
   USE_MOCK=${KOREADER_EMULATOR_USE_MOCK:-0}
+  DISABLE_TOUCH=${KOREADER_EMULATOR_DISABLE_TOUCH:-0}
 
   mkdir -p "$CACHE" "$OUTPUT" "$PROFILE"
   if [[ ! -s $ARCHIVE ]]; then
@@ -53,6 +54,7 @@ if [[ ${1:-} != --inside-container ]]; then
     -e KOREADER_EMULATOR_HEIGHT='$HEIGHT' \
     -e KOREADER_EMULATOR_DPI='$DPI' \
     -e KOREADER_EMULATOR_SCENARIO='$SCENARIO' \
+    -e DISABLE_TOUCH='$DISABLE_TOUCH' \
     -v '$ROOT:/workspace:ro' \
     -v '$CACHE:/opt/koreader:ro' \
     -v '$PROFILE:/profile' \

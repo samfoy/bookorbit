@@ -149,7 +149,9 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json({"message": f"No fixture for {path}"}, 404)
 
     def do_POST(self) -> None:  # noqa: N802
-        if self.path.endswith("/koreader/plugin/catalog/store/acquisitions"):
+        if self.path.endswith("/koreader/plugin/match-check"):
+            self.send_json({"matches": [], "libraryVersion": "emulator-v1"})
+        elif self.path.endswith("/koreader/plugin/catalog/store/acquisitions"):
             self.send_json(
                 {
                     "id": "00000000-0000-4000-8000-000000000001",
