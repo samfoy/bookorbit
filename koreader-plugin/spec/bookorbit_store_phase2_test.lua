@@ -66,4 +66,30 @@ local unowned = Store.mapBooks({ { id = mapped.externalId, title = mapped.title,
 Store.startStoreAcquisition(repeated_menu, unowned, 1, nil, "auto")
 assert(posted == 0, "rapid repeated taps must still be blocked before POST")
 
+local personalized_home = {
+    personalizedShelves = {
+        { id = "for-you", title = "For You", kind = "for-you", items = { {
+            id = "hardcover:99", title = "Jonathan Strange", authors = { "Susanna Clarke" },
+            recommendationReason = "More by Susanna Clarke",
+        } } },
+        { id = "up-next-series", title = "Up Next in Your Series", kind = "up-next", items = { {
+            id = "bookorbit:42", title = "The Tombs of Atuan", authors = { "Ursula K. Le Guin" },
+            recommendationReason = "Next in the Earthsea Cycle series",
+            state = { inBookOrbit = true, alreadyOwned = true, bookId = 42, localFormats = { "epub" } },
+        } } },
+    },
+    trending = { title = "Trending", kind = "trending", items = {} },
+    genreShelves = {},
+}
+local home_menu = {
+    on_device = {},
+    storeBookItems = Store.storeBookItems,
+    storeJobForBook = function() return nil end,
+}
+local _, for_you_context = Store.storeHomeItems(home_menu, personalized_home, false, 1)
+local _, up_next_context = Store.storeHomeItems(home_menu, personalized_home, false, 2)
+assert(for_you_context.subtitle == "For You", "personalized shelves must lead Store home")
+assert(for_you_context.books[1].recommendationReason == "More by Susanna Clarke")
+assert(up_next_context.books[1].alreadyOwned == true, "strict up-next shelf retains local ownership")
+
 print("bookorbit_store_phase2_test.lua: slice 1 ok")

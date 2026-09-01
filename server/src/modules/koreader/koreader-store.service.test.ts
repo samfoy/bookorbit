@@ -23,13 +23,22 @@ function makeService() {
   const phase2 = {
     enrichResults: vi.fn((_user, books) => Promise.resolve(books.map((book: object) => ({ ...book, state: { alreadyRead: false } })))),
   };
+  const personalization = { getShelves: vi.fn().mockResolvedValue([]) };
   return {
-    service: new KoreaderStoreService(discovery as never, browse as never, acquisitions as never, libraries as never, phase2 as never),
+    service: new KoreaderStoreService(
+      discovery as never,
+      browse as never,
+      acquisitions as never,
+      libraries as never,
+      phase2 as never,
+      personalization as never,
+    ),
     discovery,
     browse,
     acquisitions,
     libraries,
     phase2,
+    personalization,
   };
 }
 
@@ -44,6 +53,7 @@ describe('KoreaderStoreService', () => {
       generatedAt: 'now',
       trending: { items: [] },
       genreShelves: [],
+      personalizedShelves: [],
     });
     await expect(service.browse(uploadUser, { kind: 'genre', value: 'fantasy', page: 2, pageSize: 12, hideRead: true })).resolves.toEqual({
       id: 'genre-fantasy',

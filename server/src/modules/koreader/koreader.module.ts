@@ -37,6 +37,7 @@ import { KoreaderService } from './koreader.service';
 import { KoreaderStatsService } from './koreader-stats.service';
 import { KoreaderStoreService } from './koreader-store.service';
 import { KoreaderStorePhase2Service } from './koreader-store-phase2.service';
+import { KoreaderStorePersonalizationService } from './koreader-store-personalization.service';
 
 @Module({
   imports: [
@@ -77,6 +78,7 @@ import { KoreaderStorePhase2Service } from './koreader-store-phase2.service';
     KoreaderStatsService,
     KoreaderStoreService,
     KoreaderStorePhase2Service,
+    KoreaderStorePersonalizationService,
   ],
   exports: [KoreaderService, KoreaderRepository],
 })

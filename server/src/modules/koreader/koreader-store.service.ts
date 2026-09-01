@@ -13,6 +13,7 @@ import type { SearchExternalBooksDto } from '../book-discovery/dto/search-extern
 import { HardcoverCatalogBrowseService } from '../hardcover/hardcover-catalog-browse.service';
 import { LibraryService } from '../library/library.service';
 import { KoreaderStorePhase2Service } from './koreader-store-phase2.service';
+import { KoreaderStorePersonalizationService } from './koreader-store-personalization.service';
 
 const MAX_STORE_COVER_BYTES = 4 * 1024 * 1024;
 const STORE_COVER_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
@@ -25,6 +26,7 @@ export class KoreaderStoreService {
     private readonly acquisitions: BookAcquisitionService,
     private readonly libraries: LibraryService,
     private readonly phase2: KoreaderStorePhase2Service,
+    private readonly personalization: KoreaderStorePersonalizationService,
   ) {}
 
   async getHome(user: RequestUser, query: BrowseHomeDto) {
@@ -37,7 +39,13 @@ export class KoreaderStoreService {
       offset += section.items.length;
       return { ...section, items };
     };
-    return { ...home, trending: enrichSection(home.trending), genreShelves: home.genreShelves.map(enrichSection) };
+    const trending = enrichSection(home.trending);
+    const genreShelves = home.genreShelves.map(enrichSection);
+    const personalizedShelves = await this.personalization.getShelves(
+      user,
+      [trending, ...genreShelves].flatMap((section) => section.items),
+    );
+    return { ...home, trending, genreShelves, personalizedShelves };
   }
 
   async browse(user: RequestUser, query: BrowseExternalBooksDto) {

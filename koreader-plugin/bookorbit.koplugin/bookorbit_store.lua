@@ -59,6 +59,7 @@ local function externalBook(book)
         progressPercentage = state.progressPercentage,
         hardcoverStatus = state.hardcoverStatus,
         storygraphStatus = state.storygraphStatus,
+        recommendationReason = book.recommendationReason,
         alreadyRead = state.alreadyRead == true,
         alreadyOwned = state.alreadyOwned == true,
         onDevice = false,
@@ -131,6 +132,9 @@ end
 
 function Store:storeHomeItems(body, stale, page)
     local shelves = {}
+    for _, shelf in ipairs((body or {}).personalizedShelves or {}) do
+        if shelf.available ~= false and #(shelf.items or {}) > 0 then shelves[#shelves + 1] = shelf end
+    end
     if type(body) == "table" and type(body.trending) == "table" then shelves[#shelves + 1] = body.trending end
     for _, shelf in ipairs((body or {}).genreShelves or {}) do shelves[#shelves + 1] = shelf end
     page = math.max(1, math.min(tonumber(page) or 1, math.max(1, #shelves)))
@@ -309,6 +313,7 @@ end
 
 function Store:storeDescription(book)
     local lines = { book.title or _("Untitled") }
+    if book.recommendationReason then lines[#lines + 1] = book.recommendationReason end
     if firstAuthor(book) then lines[#lines + 1] = firstAuthor(book) end
     if book.seriesName then lines[#lines + 1] = book.seriesName end
     if book.publishedYear then lines[#lines + 1] = tostring(book.publishedYear) end
@@ -345,6 +350,7 @@ function Store.storeDetail(book)
         relatedSections = {},
         external = true,
         storeBook = book,
+        recommendationReason = book.recommendationReason,
     }
 end
 

@@ -4,6 +4,7 @@ import { PgDialect } from 'drizzle-orm/pg-core';
 import { describe, expect, it, vi } from 'vitest';
 
 import { makeRequestUser } from '../upload/test-helpers';
+import { buildPersonalizedForYou } from './koreader-store-personalization.service';
 import { KoreaderStorePhase2Service, matchStoreState, type StoreStateCandidate } from './koreader-store-phase2.service';
 
 const dialect = new PgDialect();
@@ -129,5 +130,40 @@ describe('KoreaderStorePhase2Service', () => {
 
     expect(db.execute).not.toHaveBeenCalled();
     expect(enriched[0]?.state).toEqual(expect.objectContaining({ inBookOrbit: false, alreadyOwned: false, alreadyRead: false }));
+  });
+});
+
+describe('buildPersonalizedForYou', () => {
+  it('explains recommendations only with real author or genre evidence', () => {
+    const candidates = [
+      result({ id: 'hardcover:11', title: 'Jonathan Strange', authors: ['Susanna Clarke'], isbn10: null, isbn13: null }),
+      result({
+        id: 'hardcover:12',
+        title: 'A Fantasy',
+        authors: ['Someone Else'],
+        isbn10: null,
+        isbn13: null,
+        genres: [{ name: 'Fantasy', slug: 'fantasy' }],
+      }),
+      result({ id: 'hardcover:13', title: 'Unrelated', authors: ['Nobody'], isbn10: null, isbn13: null, genres: [] }),
+    ];
+    const personalized = buildPersonalizedForYou(candidates, [
+      { title: 'Piranesi', rating: 5, author: 'Susanna Clarke', genres: ['Fantasy'], seriesName: null },
+    ]);
+    expect(personalized.map((book) => book.recommendationReason)).toEqual(['More by Susanna Clarke', 'Fantasy matching your recent reading']);
+    expect(personalized.some((book) => book.title === 'Unrelated')).toBe(false);
+  });
+
+  it('excludes books already read or owned and deduplicates by ISBN before title/author', () => {
+    const empty = matchStoreState(result(), []);
+    const first = result({ id: 'hardcover:21', isbn13: '9780000000001', state: empty });
+    const duplicate = result({ id: 'storygraph:21', isbn13: '978-0-00000-000-1', state: empty });
+    const read = result({ id: 'hardcover:22', isbn13: null, state: { ...empty, alreadyRead: true } });
+    const personalized = buildPersonalizedForYou(
+      [first, duplicate, read],
+      [{ title: 'Piranesi', rating: 5, author: 'Susanna Clarke', genres: [], seriesName: null }],
+    );
+    expect(personalized).toHaveLength(1);
+    expect(personalized[0]?.id).toBe('hardcover:21');
   });
 });

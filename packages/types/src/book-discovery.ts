@@ -27,6 +27,7 @@ export interface ExternalBookSearchResult {
   genres: ExternalBookGenre[];
   sources: ExternalBookSourceLink[];
   state?: KoreaderStoreResultState;
+  recommendationReason?: string | null;
 }
 
 export interface KoreaderStoreResultState {
@@ -81,6 +82,18 @@ export interface DiscoveryBrowseHomeResponse {
   trending: DiscoveryBrowseSection;
   genreShelves: DiscoveryBrowseSection[];
   genres: ExternalBookGenre[];
+}
+
+export type KoreaderStoreShelfKind = "for-you" | "up-next" | "tracker" | "curated";
+
+export interface KoreaderStoreShelf {
+  id: string;
+  title: string;
+  subtitle: string | null;
+  kind: KoreaderStoreShelfKind;
+  items: ExternalBookSearchResult[];
+  available: boolean;
+  message: string | null;
 }
 
 export interface DiscoveryBrowseResponse extends DiscoveryBrowseSection {
