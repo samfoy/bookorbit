@@ -198,7 +198,6 @@ function Store:openBookStore()
 end
 
 function Store:loadStoreHome(push)
-    local request_generation = self:nextStoreRequestGeneration()
     local cached = self:storeCache()
     local connected = NetworkMgr:isConnected()
     if cached then
@@ -206,6 +205,7 @@ function Store:loadStoreHome(push)
         self:switchTo(context.title, items, context, push)
         if not connected then return end
     end
+    local request_generation = self:nextStoreRequestGeneration()
     self:runConnected(function()
         if not self:storeRequestIsCurrent(request_generation) then return end
         local body, err = self:fetch(_("Loading Book Store..."), function()

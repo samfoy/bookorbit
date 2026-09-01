@@ -31,19 +31,20 @@ export class HardcoverTrackerService {
       ['hardcover-want-to-read', 'Hardcover Want to Read', HARDCOVER_STATUS.WANT_TO_READ],
       ['hardcover-currently-reading', 'Hardcover Currently Reading', HARDCOVER_STATUS.CURRENTLY_READING],
     ] as const;
-    const shelves: KoreaderStoreShelf[] = [];
-    for (const [id, title, statusId] of definitions) {
-      try {
-        const response = await this.client.query<TrackerResponse>(userId, token, TRACKER_QUERY, { statusId, limit: TRACKER_LIMIT });
-        const ids = (response.me?.[0]?.user_books ?? []).flatMap((row) =>
-          Number.isSafeInteger(row.book_id) && (row.book_id ?? 0) > 0 ? [row.book_id!] : [],
-        );
-        const items = await this.browse.getBooksByIds(userId, ids);
-        shelves.push({ id, title, subtitle: 'Synced from your Hardcover tracker', kind: 'tracker', items, available: true, message: null });
-      } catch {
-        shelves.push(this.unavailable(id, title, 'Hardcover tracker is temporarily unavailable'));
-      }
-    }
+    const shelves = await Promise.all(
+      definitions.map(async ([id, title, statusId]): Promise<KoreaderStoreShelf> => {
+        try {
+          const response = await this.client.query<TrackerResponse>(userId, token, TRACKER_QUERY, { statusId, limit: TRACKER_LIMIT });
+          const ids = (response.me?.[0]?.user_books ?? []).flatMap((row) =>
+            Number.isSafeInteger(row.book_id) && (row.book_id ?? 0) > 0 ? [row.book_id!] : [],
+          );
+          const items = await this.browse.getBooksByIds(userId, ids);
+          return { id, title, subtitle: 'Synced from your Hardcover tracker', kind: 'tracker', items, available: true, message: null };
+        } catch {
+          return this.unavailable(id, title, 'Hardcover tracker is temporarily unavailable');
+        }
+      }),
+    );
     shelves.push(
       this.unavailable(
         'hardcover-custom-lists',

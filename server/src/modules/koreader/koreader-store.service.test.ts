@@ -1,5 +1,6 @@
 import { Permission } from '@bookorbit/types';
 import { ForbiddenException } from '@nestjs/common';
+import sharp from 'sharp';
 import { describe, expect, it, vi } from 'vitest';
 
 import { makeRequestUser } from '../upload/test-helpers';
@@ -179,8 +180,10 @@ describe('KoreaderStoreService', () => {
 
   it('proxies a bounded image response without exposing provider credentials', async () => {
     const { service } = makeService();
-    const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xdb]);
-    const response = new Response(jpeg, { status: 200, headers: { 'content-type': 'image/jpeg' } });
+    const jpeg = await sharp({ create: { width: 2, height: 3, channels: 3, background: 'white' } })
+      .jpeg()
+      .toBuffer();
+    const response = new Response(new Uint8Array(jpeg), { status: 200, headers: { 'content-type': 'image/jpeg' } });
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(response);
     const reply = { type: vi.fn().mockReturnThis(), header: vi.fn().mockReturnThis(), send: vi.fn() };
 
@@ -190,7 +193,7 @@ describe('KoreaderStoreService', () => {
     const init = fetchSpy.mock.calls[0]?.[1];
     expect(init?.headers).toEqual(expect.not.objectContaining({ authorization: expect.anything(), 'x-auth-key': expect.anything() }));
     expect(reply.type).toHaveBeenCalledWith('image/jpeg');
-    expect(reply.send).toHaveBeenCalledWith(Buffer.from(jpeg));
+    expect(Buffer.isBuffer(reply.send.mock.calls[0]?.[0])).toBe(true);
     fetchSpy.mockRestore();
   });
 

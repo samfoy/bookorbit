@@ -21,24 +21,25 @@ export class StorygraphTrackerService {
       ['storygraph-currently-reading', 'StoryGraph Currently Reading', '/currently-reading'],
       ['storygraph-recent', 'Recently added on StoryGraph', '/to-read?sort=recently-added'],
     ] as const;
-    const shelves: KoreaderStoreShelf[] = [];
-    for (const [id, title, path] of definitions) {
-      try {
-        const response = await this.client.get(userId, cookies, path);
-        if (response.status !== 200 || response.redirectedToSignIn) throw new Error('unavailable');
-        shelves.push({
-          id,
-          title,
-          subtitle: 'Synced from your StoryGraph tracker',
-          kind: 'tracker',
-          items: this.catalog.parseBooks(response.html).slice(0, 24),
-          available: true,
-          message: null,
-        });
-      } catch {
-        shelves.push(this.unavailable(id, title, 'StoryGraph tracker is temporarily unavailable'));
-      }
-    }
+    const shelves = await Promise.all(
+      definitions.map(async ([id, title, path]): Promise<KoreaderStoreShelf> => {
+        try {
+          const response = await this.client.get(userId, cookies, path);
+          if (response.status !== 200 || response.redirectedToSignIn) throw new Error('unavailable');
+          return {
+            id,
+            title,
+            subtitle: 'Synced from your StoryGraph tracker',
+            kind: 'tracker',
+            items: this.catalog.parseBooks(response.html).slice(0, 24),
+            available: true,
+            message: null,
+          };
+        } catch {
+          return this.unavailable(id, title, 'StoryGraph tracker is temporarily unavailable');
+        }
+      }),
+    );
     shelves.push(
       this.unavailable(
         'storygraph-challenges',

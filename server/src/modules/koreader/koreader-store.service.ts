@@ -1,7 +1,8 @@
 import type { CreateBookAcquisitionRequest, ExternalBookSearchResult, KoreaderStoreConfigResponse, KoreaderStoreShelf } from '@bookorbit/types';
 import { Permission } from '@bookorbit/types';
-import { BadGatewayException, ForbiddenException, Injectable, PayloadTooLargeException } from '@nestjs/common';
+import { BadGatewayException, ForbiddenException, Injectable, Logger, PayloadTooLargeException, ServiceUnavailableException } from '@nestjs/common';
 import type { FastifyReply } from 'fastify';
+import sharp from 'sharp';
 
 import type { RequestUser } from '../../common/types/request-user';
 import { BookAcquisitionService } from '../book-discovery/book-acquisition.service';
@@ -19,6 +20,17 @@ import { KoreaderStorePersonalizationService } from './koreader-store-personaliz
 
 const MAX_STORE_COVER_BYTES = 4 * 1024 * 1024;
 const STORE_COVER_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+const STORE_COVER_CACHE_MAX_ENTRIES = 128;
+const STORE_COVER_CACHE_MAX_BYTES = 48 * 1024 * 1024;
+const STORE_COVER_MAX_INFLIGHT = 12;
+const STORE_COVER_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const STORE_COVER_PREWARM_LIMIT = 6;
+const STORE_COVER_WIDTH = 360;
+
+interface StoreCoverCacheEntry {
+  body: Buffer;
+  expiresAt: number;
+}
 
 export function applyStoreBrowseFilters(books: ExternalBookSearchResult[], query: BrowseExternalBooksDto): ExternalBookSearchResult[] {
   const filtered = books.filter((book) => {
@@ -45,6 +57,11 @@ export function applyStoreBrowseFilters(books: ExternalBookSearchResult[], query
 
 @Injectable()
 export class KoreaderStoreService {
+  private readonly logger = new Logger(KoreaderStoreService.name);
+  private readonly coverCache = new Map<string, StoreCoverCacheEntry>();
+  private readonly coverInflight = new Map<string, Promise<Buffer>>();
+  private coverCacheBytes = 0;
+
   constructor(
     private readonly discovery: BookDiscoveryService,
     private readonly catalogBrowse: HardcoverCatalogBrowseService,
@@ -57,6 +74,7 @@ export class KoreaderStoreService {
   ) {}
 
   async getHome(user: RequestUser, query: BrowseHomeDto) {
+    const trackerShelvesPromise = Promise.allSettled([this.hardcoverTrackers.getShelves(user.id), this.storygraphTrackers.getShelves(user.id)]);
     const home = await this.catalogBrowse.getBrowseHome(user.id, query.hideRead);
     const allItems = [home.trending, ...home.genreShelves].flatMap((section) => section.items);
     const enriched = await this.phase2.enrichResults(user, allItems);
@@ -69,19 +87,23 @@ export class KoreaderStoreService {
     const trending = enrichSection(home.trending);
     const genreShelves = home.genreShelves.map(enrichSection);
     const candidates = [trending, ...genreShelves].flatMap((section) => section.items);
-    const [personalizedResult, hardcoverResult, storygraphResult] = await Promise.allSettled([
-      this.personalization.getShelves(user, candidates),
-      this.hardcoverTrackers.getShelves(user.id),
-      this.storygraphTrackers.getShelves(user.id),
-    ]);
+    const [personalizedResult] = await Promise.allSettled([this.personalization.getShelves(user, candidates)]);
+    const [hardcoverResult, storygraphResult] = await trackerShelvesPromise;
     const personalizedShelves = personalizedResult.status === 'fulfilled' ? personalizedResult.value : [];
     const hardcoverShelves = hardcoverResult.status === 'fulfilled' ? hardcoverResult.value : [];
     const storygraphShelves = storygraphResult.status === 'fulfilled' ? storygraphResult.value : [];
-    const trackerShelves: KoreaderStoreShelf[] = [];
-    for (const shelf of [...hardcoverShelves, ...storygraphShelves]) {
-      trackerShelves.push({ ...shelf, items: shelf.items.length > 0 ? await this.phase2.enrichResults(user, shelf.items) : [] });
-    }
-    return { ...home, trending, genreShelves, personalizedShelves: [...personalizedShelves, ...trackerShelves] };
+    const rawTrackerShelves = [...hardcoverShelves, ...storygraphShelves];
+    const rawTrackerItems = rawTrackerShelves.flatMap((shelf) => shelf.items);
+    const enrichedTrackerItems = rawTrackerItems.length > 0 ? await this.phase2.enrichResults(user, rawTrackerItems) : [];
+    let trackerOffset = 0;
+    const trackerShelves: KoreaderStoreShelf[] = rawTrackerShelves.map((shelf) => {
+      const items = enrichedTrackerItems.slice(trackerOffset, trackerOffset + shelf.items.length);
+      trackerOffset += shelf.items.length;
+      return { ...shelf, items };
+    });
+    const response = { ...home, trending, genreShelves, personalizedShelves: [...personalizedShelves, ...trackerShelves] };
+    this.prewarmStoreCovers(response);
+    return response;
   }
 
   async browse(user: RequestUser, query: BrowseExternalBooksDto) {
@@ -137,6 +159,38 @@ export class KoreaderStoreService {
   }
 
   async streamCover(url: string, reply: FastifyReply): Promise<void> {
+    const body = await this.loadStoreCover(url);
+    reply.type('image/jpeg').header('Cache-Control', 'private, max-age=86400').send(body);
+  }
+
+  private async loadStoreCover(url: string): Promise<Buffer> {
+    const cached = this.coverCache.get(url);
+    if (cached && cached.expiresAt > Date.now()) {
+      this.coverCache.delete(url);
+      this.coverCache.set(url, cached);
+      return cached.body;
+    }
+    if (cached) this.deleteCoverCacheEntry(url, cached);
+
+    const inflight = this.coverInflight.get(url);
+    if (inflight) return inflight;
+    if (this.coverInflight.size >= STORE_COVER_MAX_INFLIGHT) {
+      throw new ServiceUnavailableException('Too many cover fetches are already in progress');
+    }
+
+    const pending = this.fetchAndResizeStoreCover(url)
+      .then((body) => {
+        this.cacheStoreCover(url, body);
+        return body;
+      })
+      .finally(() => {
+        this.coverInflight.delete(url);
+      });
+    this.coverInflight.set(url, pending);
+    return pending;
+  }
+
+  private async fetchAndResizeStoreCover(url: string): Promise<Buffer> {
     const response = await fetchWithSafeRedirects(url, { headers: { accept: 'image/jpeg,image/png,image/webp' } });
     if (!response.ok) throw new BadGatewayException(`Remote cover returned HTTP ${response.status}`);
     const contentType = response.headers.get('content-type')?.split(';', 1)[0]?.trim().toLowerCase();
@@ -161,14 +215,69 @@ export class KoreaderStoreService {
       chunks.push(value);
     }
     if (size === 0) throw new BadGatewayException('Remote cover response was empty');
-    const body = Buffer.concat(
+    const source = Buffer.concat(
       chunks.map((chunk) => Buffer.from(chunk)),
       size,
     );
-    if (!this.coverBytesMatchType(body, contentType)) {
+    if (!this.coverBytesMatchType(source, contentType)) {
       throw new BadGatewayException('Remote cover bytes did not match its image type');
     }
-    reply.type(contentType).header('Cache-Control', 'private, max-age=86400').send(body);
+    try {
+      return await sharp(source).resize({ width: STORE_COVER_WIDTH, withoutEnlargement: true }).jpeg({ quality: 78, mozjpeg: true }).toBuffer();
+    } catch {
+      throw new BadGatewayException('Remote cover could not be decoded');
+    }
+  }
+
+  private cacheStoreCover(url: string, body: Buffer): void {
+    if (body.byteLength > STORE_COVER_CACHE_MAX_BYTES) return;
+    const existing = this.coverCache.get(url);
+    if (existing) this.deleteCoverCacheEntry(url, existing);
+    while (this.coverCache.size >= STORE_COVER_CACHE_MAX_ENTRIES || this.coverCacheBytes + body.byteLength > STORE_COVER_CACHE_MAX_BYTES) {
+      const oldestUrl = this.coverCache.keys().next().value as string | undefined;
+      if (!oldestUrl) break;
+      const oldest = this.coverCache.get(oldestUrl);
+      if (!oldest) break;
+      this.deleteCoverCacheEntry(oldestUrl, oldest);
+    }
+    this.coverCache.set(url, { body, expiresAt: Date.now() + STORE_COVER_CACHE_TTL_MS });
+    this.coverCacheBytes += body.byteLength;
+  }
+
+  private deleteCoverCacheEntry(url: string, entry: StoreCoverCacheEntry): void {
+    if (!this.coverCache.delete(url)) return;
+    this.coverCacheBytes = Math.max(0, this.coverCacheBytes - entry.body.byteLength);
+  }
+
+  private prewarmStoreCovers(home: {
+    personalizedShelves: Array<{ items: ExternalBookSearchResult[]; available?: boolean }>;
+    trending: { items: ExternalBookSearchResult[]; available?: boolean };
+    genreShelves: Array<{ items: ExternalBookSearchResult[]; available?: boolean }>;
+  }): void {
+    const firstShelf = [...home.personalizedShelves, home.trending, ...home.genreShelves].find(
+      (shelf) => shelf.available !== false && shelf.items.length > 0,
+    );
+    if (!firstShelf) return;
+
+    const urls: string[] = [];
+    const seen = new Set<string>();
+    for (const item of firstShelf.items) {
+      const url = item.coverUrl;
+      if (typeof url !== 'string' || seen.has(url)) continue;
+      try {
+        if (new URL(url).protocol !== 'https:') continue;
+      } catch {
+        continue;
+      }
+      seen.add(url);
+      urls.push(url);
+      if (urls.length === STORE_COVER_PREWARM_LIMIT) break;
+    }
+    for (const url of urls) {
+      void this.loadStoreCover(url).catch(() => {
+        this.logger.warn('[koreader.store_cover_prewarm] [fail] - cover prewarm failed');
+      });
+    }
   }
 
   private assertUploadPermission(user: RequestUser): void {

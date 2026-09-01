@@ -58,7 +58,8 @@ local menu = {
         return callback()
     end,
     client = { catalogStoreHome = function() return fresh end },
-    switchTo = function(_, _, _, context, push)
+    switchTo = function(self, _, _, context, push)
+        self:nextStoreRequestGeneration()
         switches[#switches + 1] = { context = context, push = push }
     end,
     mirrorStoreShelf = function() end,
