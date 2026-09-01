@@ -119,6 +119,11 @@ export class BookDiscoveryService {
 
   async search(userId: number, request: ExternalBookSearchRequest): Promise<ExternalBookSearchResponse> {
     const requested = new Set(request.sources);
+    const startedAtMs = Date.now();
+    this.logger.log(
+      `[book_discovery.search] [start] userId=${userId} sourceCount=${requested.size} hardcover=${requested.has('hardcover')} storygraph=${requested.has('storygraph')} - external search started`,
+    );
+
     const [hardcoverSettings, storygraphSettings] = await Promise.all([
       this.hardcoverSettings.getSettings(userId),
       this.storygraphSettings.getSettings(userId),
@@ -132,11 +137,20 @@ export class BookDiscoveryService {
     const hardcoverBooks = hardcoverOutcome.status === 'fulfilled' ? hardcoverOutcome.value : [];
     const storygraphBooks = storygraphOutcome.status === 'fulfilled' ? storygraphOutcome.value : [];
 
-    this.logSourceFailure(userId, 'hardcover', hardcoverOutcome);
-    this.logSourceFailure(userId, 'storygraph', storygraphOutcome);
+    this.logSourceFailure(userId, 'hardcover', hardcoverOutcome, startedAtMs);
+    this.logSourceFailure(userId, 'storygraph', storygraphOutcome, startedAtMs);
+
+    const results = rankExternalBookSearchResults(request.query, this.mergeBooks([...hardcoverBooks, ...storygraphBooks]));
+    const failedSources = [
+      ...(hardcoverOutcome.status === 'rejected' ? ['hardcover'] : []),
+      ...(storygraphOutcome.status === 'rejected' ? ['storygraph'] : []),
+    ];
+    this.logger.log(
+      `[book_discovery.search] [end] userId=${userId} sourceCount=${requested.size} durationMs=${Date.now() - startedAtMs} hardcoverResults=${hardcoverBooks.length} storygraphResults=${storygraphBooks.length} resultCount=${results.length} failedSources=${failedSources.join(',') || 'none'} - external search completed`,
+    );
 
     return {
-      results: rankExternalBookSearchResults(request.query, this.mergeBooks([...hardcoverBooks, ...storygraphBooks])),
+      results,
       sources: [
         this.sourceStatus(
           'hardcover',
@@ -183,12 +197,17 @@ export class BookDiscoveryService {
     };
   }
 
-  private logSourceFailure(userId: number, source: ExternalCatalogSource, outcome: PromiseSettledResult<ExternalBookSearchResult[]>): void {
+  private logSourceFailure(
+    userId: number,
+    source: ExternalCatalogSource,
+    outcome: PromiseSettledResult<ExternalBookSearchResult[]>,
+    startedAtMs: number,
+  ): void {
     if (outcome.status !== 'rejected') return;
     const errorClass = outcome.reason instanceof Error ? outcome.reason.constructor.name : 'Error';
     const error = sanitizeLogValue(outcome.reason instanceof Error ? outcome.reason.message : String(outcome.reason));
     this.logger.warn(
-      `[book_discovery.search] [fail] userId=${userId} source=${source} errorClass=${errorClass} error="${error}" - catalog source failed`,
+      `[book_discovery.search] [fail] userId=${userId} source=${source} durationMs=${Date.now() - startedAtMs} errorClass=${errorClass} error="${error}" - catalog source failed`,
     );
   }
 

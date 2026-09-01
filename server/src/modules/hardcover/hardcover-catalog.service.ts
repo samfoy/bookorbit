@@ -16,23 +16,6 @@ query SearchCatalog($query: String!) {
   }
 }`;
 
-const CATALOG_EDITIONS_QUERY = `
-query CatalogEditions($ids: [Int!]!) {
-  books(where: { id: { _in: $ids } }, limit: 20) {
-    id
-    default_ebook_edition {
-      isbn_10
-      isbn_13
-      pages
-    }
-    default_physical_edition {
-      isbn_10
-      isbn_13
-      pages
-    }
-  }
-}`;
-
 export interface HardcoverCatalogRow {
   id?: string | number;
   slug?: string | null;
@@ -72,16 +55,6 @@ interface HardcoverDefaultEdition {
   pages?: number | null;
 }
 
-interface HardcoverBookEditions {
-  id: number;
-  default_ebook_edition?: HardcoverDefaultEdition | null;
-  default_physical_edition?: HardcoverDefaultEdition | null;
-}
-
-interface HardcoverEditionsResponse {
-  books?: HardcoverBookEditions[];
-}
-
 @Injectable()
 export class HardcoverCatalogService {
   constructor(
@@ -95,29 +68,23 @@ export class HardcoverCatalogService {
 
     const response = await this.client.query<HardcoverSearchResponse>(userId, token, SEARCH_CATALOG_QUERY, { query });
     const documents = (response.search?.results?.hits ?? []).flatMap((hit) => (hit.document ? [hit.document] : []));
-    const ids = documents.map((document) => Number(document.id)).filter((id) => Number.isSafeInteger(id) && id > 0);
-    const editionResponse =
-      ids.length > 0 ? await this.client.query<HardcoverEditionsResponse>(userId, token, CATALOG_EDITIONS_QUERY, { ids }) : { books: [] };
-    const editionsByBookId = new Map((editionResponse.books ?? []).map((book) => [String(book.id), book]));
 
-    return this.mapCatalogRows(documents, editionsByBookId);
+    return this.mapCatalogRows(documents);
   }
 
-  mapCatalogRows(rows: HardcoverCatalogRow[], editionsByBookId = new Map<string, HardcoverBookEditions>()): ExternalBookSearchResult[] {
-    return rows
-      .map((row) => this.mapDocument(row, editionsByBookId.get(String(row.id))))
-      .filter((book): book is ExternalBookSearchResult => book !== null);
+  mapCatalogRows(rows: HardcoverCatalogRow[]): ExternalBookSearchResult[] {
+    return rows.map((row) => this.mapDocument(row)).filter((book): book is ExternalBookSearchResult => book !== null);
   }
 
-  private mapDocument(document: HardcoverCatalogRow | null | undefined, editions?: HardcoverBookEditions): ExternalBookSearchResult | null {
+  private mapDocument(document: HardcoverCatalogRow | null | undefined): ExternalBookSearchResult | null {
     if (!document) return null;
     const externalId = document.id == null ? '' : String(document.id);
     const title = document.title?.trim() ?? '';
     if (!externalId || !title) return null;
 
     const slug = document.slug?.trim();
-    const ebookEdition = editions?.default_ebook_edition ?? document.default_ebook_edition;
-    const physicalEdition = editions?.default_physical_edition ?? document.default_physical_edition;
+    const ebookEdition = document.default_ebook_edition;
+    const physicalEdition = document.default_physical_edition;
     const featuredSeries = this.resolveFeaturedSeries(document);
 
     return {
@@ -129,8 +96,10 @@ export class HardcoverCatalogService {
       publishedYear: this.positiveInteger(document.release_year),
       rating: this.finiteNumber(document.rating),
       ratingsCount: this.nonNegativeInteger(document.ratings_count),
-      isbn10: this.normalizeIsbn(ebookEdition?.isbn_10, 10) ?? this.normalizeIsbn(physicalEdition?.isbn_10, 10),
-      isbn13: this.normalizeIsbn(ebookEdition?.isbn_13, 13) ?? this.normalizeIsbn(physicalEdition?.isbn_13, 13),
+      isbn10:
+        this.normalizeIsbn(ebookEdition?.isbn_10, 10) ?? this.normalizeIsbn(physicalEdition?.isbn_10, 10) ?? this.isbnFromList(document.isbns, 10),
+      isbn13:
+        this.normalizeIsbn(ebookEdition?.isbn_13, 13) ?? this.normalizeIsbn(physicalEdition?.isbn_13, 13) ?? this.isbnFromList(document.isbns, 13),
       pageCount: this.positiveInteger(document.pages) ?? this.positiveInteger(physicalEdition?.pages) ?? this.positiveInteger(ebookEdition?.pages),
       seriesName: featuredSeries.name,
       seriesPosition: featuredSeries.position,
@@ -190,6 +159,14 @@ export class HardcoverCatalogService {
   private normalizeIsbn(value: string | null | undefined, length: 10 | 13): string | null {
     const normalized = value?.replace(/[^0-9X]/gi, '') ?? '';
     return normalized.length === length ? normalized : null;
+  }
+
+  private isbnFromList(isbns: unknown, length: 10 | 13): string | null {
+    if (!Array.isArray(isbns)) return null;
+    return isbns.reduce<string | null>(
+      (found, candidate) => found ?? (typeof candidate === 'string' ? this.normalizeIsbn(candidate, length) : null),
+      null,
+    );
   }
 
   private resolveGenres(cachedTags: unknown): Array<{ name: string; slug: string }> {
