@@ -78,10 +78,20 @@ function Store.mapBooks(items)
 end
 
 function Store:overlayDeviceState(books)
-    for _, book in ipairs(books or {}) do
+    for _index, book in ipairs(books or {}) do
         local path = book.bookId and self.on_device and self.on_device[book.bookId] or nil
         book.onDevice = type(path) == "string" and path ~= ""
         book.localPath = book.onDevice and path or nil
+        local acquiring = Store.storeJobForBook(self, book.externalId) ~= nil
+        local badge = Store.stateBadge(self, book, acquiring)
+        local compact = {
+            [_("Acquiring")] = _("Getting"),
+            [_("On Device")] = _("Device"),
+            [_("Want to Read")] = _("Wishlist"),
+            [_("In BookOrbit")] = _("Owned"),
+            [_("Not owned")] = _("Get"),
+        }
+        book.storeBadge = compact[badge] or badge
     end
     return books
 end

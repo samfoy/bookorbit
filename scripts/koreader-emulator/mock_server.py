@@ -88,7 +88,7 @@ class Handler(BaseHTTPRequestHandler):
         path = parsed.path
         query = parse_qs(parsed.query)
         if path.endswith("/koreader/plugin/version"):
-            self.send_json({"pluginVersion": "1.6.0", "serverVersion": "emulator", "capabilities": ["catalogStore"]})
+            self.send_json({"pluginVersion": "1.7.0", "serverVersion": "emulator", "capabilities": ["catalogStore", "catalogStorePhase2"]})
         elif path.endswith("/koreader/plugin/catalog/dashboard"):
             self.send_json(
                 {
@@ -106,6 +106,26 @@ class Handler(BaseHTTPRequestHandler):
                 }
             )
         elif path.endswith("/koreader/plugin/catalog/store/home"):
+            for_you = {
+                **BOOKS[0],
+                "recommendationReason": "Fantasy matching your recent reading",
+                "state": {
+                    "inBookOrbit": False, "bookId": None, "localFormats": [], "bookOrbitStatus": None,
+                    "progressPercentage": None, "hardcoverStatus": "want_to_read", "storygraphStatus": None,
+                    "alreadyRead": False, "alreadyOwned": False,
+                },
+            }
+            up_next = {
+                **BOOKS[1],
+                "recommendationReason": "Next in the Orbital Cycle series",
+                "seriesName": "Orbital Cycle",
+                "seriesPosition": 2,
+                "state": {
+                    "inBookOrbit": True, "bookId": 42, "localFormats": ["epub"], "bookOrbitStatus": "unread",
+                    "progressPercentage": None, "hardcoverStatus": None, "storygraphStatus": None,
+                    "alreadyRead": False, "alreadyOwned": True,
+                },
+            }
             self.send_json(
                 {
                     "generatedAt": "2026-08-31T00:00:00.000Z",
@@ -115,6 +135,11 @@ class Handler(BaseHTTPRequestHandler):
                         {"name": "Fantasy", "slug": "fantasy"},
                         {"name": "Science Fiction", "slug": "science-fiction"},
                         {"name": "Mystery", "slug": "mystery"},
+                    ],
+                    "personalizedShelves": [
+                        {"id": "for-you", "title": "For You", "subtitle": "Because of your recent reading", "kind": "for-you", "items": [for_you], "available": True, "message": None},
+                        {"id": "up-next-series", "title": "Up Next in Your Series", "subtitle": "Strict series continuation", "kind": "up-next", "items": [up_next], "available": True, "message": None},
+                        {"id": "hardcover-want-to-read", "title": "Hardcover Want to Read", "subtitle": "Synced tracker", "kind": "tracker", "items": [BOOKS[2]], "available": True, "message": None},
                     ],
                 }
             )

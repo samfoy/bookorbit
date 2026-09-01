@@ -13,13 +13,18 @@ required=[
  root/'koreader-plugin/bookorbit.koplugin/bookorbit_store_queue.lua',
  root/'koreader-plugin/bookorbit.koplugin/bookorbit_store_device.lua',
  root/'koreader-plugin/spec/bookorbit_store_phase2_test.lua',
+ root/'server/src/modules/koreader/koreader-store-personalization.service.ts',
+ root/'server/src/modules/hardcover/hardcover-tracker.service.ts',
+ root/'server/src/modules/storygraph/storygraph-tracker.service.ts',
+ root/'koreader-plugin/bookorbit.koplugin/bookorbit_store.lua',
+ root/'koreader-plugin/bookorbit.koplugin/main.lua',
 ]
 missing=[str(p) for p in required if not p.is_file()]
 if missing: raise SystemExit('missing Phase 2 files: '+', '.join(missing))
 texts={p:str(p.read_text()) for p in required}
 all_text='\n'.join(texts.values())
 anchors=[
- 'For You', 'Up Next in Your Series', 'explanation', 'alreadyOwned', 'alreadyRead',
+ 'For You', 'Up Next in Your Series', 'recommendationReason', 'alreadyOwned', 'alreadyRead',
  'Hardcover', 'StoryGraph', 'Get and open', 'Retry another', 'Get all visible',
  'Get unread series', 'free', 'Wi-Fi', 'charging', 'Remove from device',
  'cleanup', 'cancel remaining', 'missing', '1.7.0',

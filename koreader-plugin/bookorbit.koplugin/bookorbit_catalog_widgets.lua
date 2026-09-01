@@ -347,6 +347,16 @@ function CatalogWidgets.buildReadStatusBadge(book, max_width)
     })
 end
 
+function CatalogWidgets.buildStoreBadge(book, max_width)
+    if not book or not book.storeBadge then return nil end
+    return badgeChip(TextWidget:new{
+        text = shortText(book.storeBadge, 14),
+        face = Font:getFace("cfont", 8),
+        bold = true,
+        max_width = math.max(Screen:scaleBySize(26), math.floor(max_width * 2.5)),
+    })
+end
+
 function CatalogWidgets.buildSelectionBadge(max_width)
     local size = math.max(Screen:scaleBySize(13), math.min(max_width, Screen:scaleBySize(22)))
     return badgeChip(IconWidget:new{
@@ -373,7 +383,9 @@ end
 
 function CatalogWidgets.buildCoverWithStateBadges(book, width, height, path, state, downloaded, selected, cover_opts)
     local cover = CatalogWidgets.buildCoverWidget(book, width, height, path, state, cover_opts)
-    if not downloaded and not selected then return cover end
+    local badge_w = math.floor(math.min(width, height) * 0.18)
+    local store_badge = CatalogWidgets.buildStoreBadge(book, badge_w)
+    if not downloaded and not selected and not store_badge then return cover end
 
     local group = OverlapGroup:new{
         dimen = Geom:new{ w = width, h = height },
@@ -386,9 +398,12 @@ function CatalogWidgets.buildCoverWithStateBadges(book, width, height, path, sta
         table.insert(group, badge)
     end
     if selected then
-        local badge = CatalogWidgets.buildSelectionBadge(math.floor(math.min(width, height) * 0.18))
+        local badge = CatalogWidgets.buildSelectionBadge(badge_w)
         badge.overlap_align = "right"
         table.insert(group, badge)
+    elseif store_badge then
+        store_badge.overlap_offset = { Screen:scaleBySize(6), Screen:scaleBySize(6) }
+        table.insert(group, store_badge)
     end
     return group
 end
@@ -793,7 +808,8 @@ function CatalogWidgets.buildDashboardCoverWidget(book, width, height, path, sta
     local cover = CatalogWidgets.buildCoverWidget(book, width, height, path, state, cover_opts)
     local badge_w = math.floor(math.min(width, height) * DASHBOARD_BADGE_RATIO)
     local read_badge = CatalogWidgets.buildReadStatusBadge(book, badge_w)
-    if not downloaded and not read_badge then return cover end
+    local store_badge = CatalogWidgets.buildStoreBadge(book, badge_w)
+    if not downloaded and not read_badge and not store_badge then return cover end
 
     local group = OverlapGroup:new{
         dimen = Geom:new{ w = width, h = height },
@@ -805,7 +821,10 @@ function CatalogWidgets.buildDashboardCoverWidget(book, width, height, path, sta
         badge.overlap_align = "left"
         table.insert(group, badge)
     end
-    if read_badge then
+    if store_badge then
+        store_badge.overlap_offset = { Screen:scaleBySize(6), Screen:scaleBySize(6) }
+        table.insert(group, store_badge)
+    elseif read_badge then
         read_badge.overlap_align = "right"
         table.insert(group, read_badge)
     end
@@ -1051,7 +1070,7 @@ function DashboardCoverCard:init()
     if with_caption then
         local title_face = Font:getFace("cfont", CAPTION_TITLE_FONT_SIZE)
         local sub_face = Font:getFace("cfont", CAPTION_SUB_FONT_SIZE)
-        local sub_text = hasProgress(book) and formatProgress(book.progressPercentage)
+        local sub_text = (book and book.storeBadge) or hasProgress(book) and formatProgress(book.progressPercentage)
             or (book and firstAuthor(book)) or ""
         table.insert(col, VerticalSpan:new{ width = Size.span.vertical_default })
         table.insert(col, CenterContainer:new{

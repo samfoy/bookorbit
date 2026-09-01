@@ -33,11 +33,20 @@ def open_dashboard_menu() -> None:
     click(30, 32, pause=0.75)
 
 
+def open_store(width: int, height: int) -> None:
+    open_dashboard_menu()
+    if os.environ.get("DISABLE_TOUCH") == "1":
+        key("Up")
+        key("Return", pause=3.0)
+    else:
+        click(round(width * 0.50), round(height * 0.161), pause=3.0)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "scenario",
-        choices=["idle", "focus-tour", "open-menu", "bookorbit-menu", "store-home", "store-detail", "store-acquire"],
+        choices=["idle", "focus-tour", "open-menu", "bookorbit-menu", "store-home", "store-next-shelf", "store-detail", "store-acquire"],
     )
     parser.add_argument("--wait", type=float, default=4.0)
     args = parser.parse_args()
@@ -57,15 +66,11 @@ def main() -> None:
     if args.scenario == "bookorbit-menu":
         open_dashboard_menu()
         return
-    if args.scenario == "store-home":
+    if args.scenario in ("store-home", "store-next-shelf"):
         width = int(os.environ.get("KOREADER_EMULATOR_WIDTH", "758"))
         height = int(os.environ.get("KOREADER_EMULATOR_HEIGHT", "1024"))
-        open_dashboard_menu()
-        if os.environ.get("DISABLE_TOUCH") == "1":
-            key("Up")
-            key("Return", pause=3.0)
-        else:
-            click(round(width * 0.50), round(height * 0.161), pause=3.0)
+        open_store(width, height)
+        if args.scenario == "store-next-shelf": click(round(width * 0.68), round(height * 0.972), pause=2.0)
         return
     if args.scenario == "store-detail":
         width = int(os.environ.get("KOREADER_EMULATOR_WIDTH", "758"))
