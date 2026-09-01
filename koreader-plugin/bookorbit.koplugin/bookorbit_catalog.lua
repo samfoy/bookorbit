@@ -2360,6 +2360,8 @@ function BookOrbitCatalog:onMenuSelect(item)
         self:showStoreQueue()
     elseif item.kind == "store-job" then
         self:showStoreJob(item.job)
+    elseif item.kind == "store-intent" then
+        self:showStoreIntention(item.intent)
     elseif item.kind == "store-toggle-read" then
         self:persistSetting("store_hide_read", not self:storeHideRead())
         self:loadStoreHome(false)

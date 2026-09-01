@@ -8,6 +8,7 @@ on the BookOrbit server.
 ]]
 
 local ButtonDialog = require("ui/widget/buttondialog")
+
 local InfoMessage = require("ui/widget/infomessage")
 local InputDialog = require("ui/widget/inputdialog")
 local NetworkMgr = require("ui/network/manager")
@@ -18,6 +19,8 @@ local T = require("ffi/util").template
 local _ = require("gettext")
 
 local Capabilities = require("bookorbit_capabilities")
+local StoreQueue = require("bookorbit_store_queue")
+local StoreDevice = require("bookorbit_store_device")
 
 local Store = {}
 local STORE_PAGE_SIZE = 12
@@ -381,6 +384,11 @@ function Store:showStoreBookActions(book)
     if book.genres and book.genres[1] then buttons[#buttons + 1] = {{ text = book.genres[1].name, callback = function()
         UIManager:close(dialog); self:loadStoreBrowse("genre", book.genres[1].slug, 1, nil, true)
     end }} end
+    if book.onDevice and book.bookId then buttons[#buttons + 1] = {{ text = _("Remove from device"), callback = function()
+        UIManager:close(dialog)
+        local ok, err = StoreDevice.removeFromDevice(self, book.bookId)
+        UIManager:show(InfoMessage:new{ text = ok and _("Removed from device; kept in BookOrbit.") or tostring(err), timeout = 3 })
+    end }} end
     dialog = ButtonDialog:new{ title = book.title, buttons = buttons }
     UIManager:show(dialog)
 end
@@ -450,9 +458,16 @@ function Store:showStoreAcquire(book)
         dialog = ButtonDialog:new{
             title = T(_("Get %1?\n\nLibrary: %2\nSource: %3"), book.title, library.name, source),
             buttons = {
-                {{ text = _("Get book"), callback = function()
+                {{ text = _("Get"), callback = function()
                     UIManager:close(dialog)
-                    self:startStoreAcquisition(book, library.id, folder and folder.id or nil, source)
+                    self:startStoreAcquisition(book, library.id, folder and folder.id or nil, source, "get")
+                end }},
+                {{ text = _("Get and download"), callback = function()
+                    UIManager:close(dialog)
+                    self:startStoreAcquisition(book, library.id, folder and folder.id or nil, source, "download")
+                end }, { text = _("Get and open"), callback = function()
+                    UIManager:close(dialog)
+                    self:startStoreAcquisition(book, library.id, folder and folder.id or nil, source, "open")
                 end }},
                 {{ text = _("Destination"), callback = function()
                     UIManager:close(dialog); self:chooseStoreLibrary(book, config)
@@ -538,13 +553,90 @@ function Store:persistActiveStoreJobs(jobs)
     self:persistSetting("store_active_jobs", jobs)
 end
 
+function Store:storeIntentions()
+    return StoreQueue.normalize(self.settings and self.settings.store_queue)
+end
+
+function Store:persistStoreIntentions(intentions)
+    self:persistSetting("store_queue", intentions)
+end
+
+function Store:updateStoreIntention(intent_id, status, fields)
+    if not intent_id then return end
+    self:persistStoreIntentions(StoreQueue.transition(self:storeIntentions(), intent_id, status, fields))
+end
+
+function Store:startStoreBatch(books, action)
+    self:loadStoreConfig(function(config)
+        local library, folder = self:storeDestination(config)
+        if not library then return end
+        local batch_id = string.format("batch-%d", os.time())
+        local queue = self:storeIntentions()
+        for index, book in ipairs(books or {}) do
+            if index > STORE_PAGE_SIZE then break end
+            if not book.alreadyOwned then
+                queue = StoreQueue.enqueue(queue, {
+                    external_id = book.externalId, title = book.title, book = book,
+                    library_id = library.id, folder_id = folder and folder.id or nil,
+                    source = self:storeSource(config), action = action or "download",
+                    status = "queued", batch_id = batch_id,
+                })
+            end
+        end
+        self:persistStoreIntentions(queue)
+        self:processStoreBatch(batch_id)
+    end)
+end
+
+function Store:processStoreBatch(batch_id)
+    for _, intent in ipairs(self:storeIntentions()) do
+        if intent.batch_id == batch_id and intent.status == "acquiring" then return end
+    end
+    for _, intent in ipairs(self:storeIntentions()) do
+        if intent.batch_id == batch_id and intent.status == "queued" then
+            self:startStoreAcquisition(intent.book, intent.library_id, intent.folder_id, intent.source, intent.action, intent)
+            return
+        end
+    end
+end
+
+function Store:cancelRemainingStoreBatch(batch_id)
+    self:persistStoreIntentions(StoreQueue.cancelRemaining(self:storeIntentions(), batch_id))
+end
+
+function Store:showStoreCleanupPreview()
+    local ConfirmBox = require("ui/widget/confirmbox")
+    local entries = {}
+    for _, intent in ipairs(self:storeIntentions()) do
+        if intent.status == "ready" and intent.book_id and self.on_device and self.on_device[intent.book_id] then
+            entries[#entries + 1] = {
+                book_id = intent.book_id, title = intent.title,
+                local_path = self.on_device[intent.book_id],
+                finished_at = intent.updated_at or intent.created_at,
+            }
+        end
+    end
+    local candidates = StoreDevice.cleanupPreview(entries, os.time(), self.settings.store_cleanup_age_days or 30)
+    if #candidates == 0 then
+        UIManager:show(InfoMessage:new{ text = _("No finished Store downloads are eligible for cleanup."), timeout = 3 })
+        return
+    end
+    UIManager:show(ConfirmBox:new{
+        text = T(_("Remove %1 finished downloads from this device? They remain in BookOrbit."), #candidates),
+        ok_text = _("Remove from device"),
+        ok_callback = function()
+            for _, entry in ipairs(candidates) do StoreDevice.removeFromDevice(self, entry.book_id) end
+        end,
+    })
+end
+
 function Store:storeJobForBook(external_id)
     for _, entry in ipairs(Store.activeStoreJobs(self)) do
         if entry.external_id == external_id then return entry end
     end
 end
 
-function Store:startStoreAcquisition(book, library_id, folder_id, source)
+function Store:startStoreAcquisition(book, library_id, folder_id, source, action, existing_intent)
     self.store_starting_jobs = self.store_starting_jobs or {}
     if book.alreadyOwned and book.bookId then
         self:showOwnedStoreBook(book)
@@ -554,6 +646,18 @@ function Store:startStoreAcquisition(book, library_id, folder_id, source)
         UIManager:show(InfoMessage:new{ text = _("This book is already being acquired."), timeout = 3 })
         return
     end
+    local intentions, intent = StoreQueue.enqueue(self:storeIntentions(), existing_intent or {
+        external_id = book.externalId,
+        title = book.title,
+        book = book,
+        library_id = library_id,
+        folder_id = folder_id,
+        source = source,
+        action = action or "get",
+        status = "queued",
+    })
+    self:persistStoreIntentions(intentions)
+    self:updateStoreIntention(intent.intent_id, "acquiring")
     self.store_starting_jobs[book.externalId] = true
     self:runConnected(function()
         local job, err = self:fetch(_("Starting acquisition..."), function()
@@ -569,15 +673,20 @@ function Store:startStoreAcquisition(book, library_id, folder_id, source)
         end)
         if not job then
             self.store_starting_jobs[book.externalId] = nil
+            self:updateStoreIntention(intent.intent_id, "failed", { error = tostring(err or "acquisition_failed") })
             if err ~= "cancelled" then self:showServerError(err) end
             return
         end
         local jobs = self:activeStoreJobs()
-        jobs[#jobs + 1] = { id = job.id, external_id = book.externalId, title = book.title }
+        jobs[#jobs + 1] = {
+            id = job.id, external_id = book.externalId, title = book.title,
+            intent_id = intent.intent_id, action = intent.action,
+        }
         self:persistActiveStoreJobs(jobs)
+        self:updateStoreIntention(intent.intent_id, "acquiring", { job_id = job.id })
         self.store_starting_jobs[book.externalId] = nil
         Notification:notify(T(_("Getting %1"), book.title))
-        self:pollStoreAcquisition(job.id, book.title)
+        self:pollStoreAcquisition(job.id, book.title, intent.intent_id, intent.action)
     end)
 end
 
@@ -589,7 +698,7 @@ function Store:removeActiveStoreJob(job_id)
     self:persistActiveStoreJobs(keep)
 end
 
-function Store:pollStoreAcquisition(job_id, title)
+function Store:pollStoreAcquisition(job_id, title, intent_id, action)
     self.store_poll_generations = self.store_poll_generations or {}
     self.store_poll_generations[job_id] = (self.store_poll_generations[job_id] or 0) + 1
     local generation = self.store_poll_generations[job_id]
@@ -598,9 +707,13 @@ function Store:pollStoreAcquisition(job_id, title)
         self:runOffThread(function()
             local job, err = self.client:catalogStoreAcquisition(job_id)
             if generation ~= self.store_poll_generations[job_id] then return end
+            local tracked_intent = StoreQueue.find(self:storeIntentions(), intent_id)
+            local batch_id = tracked_intent and tracked_intent.batch_id
             if not job then
                 if err == 404 then
                     self:removeActiveStoreJob(job_id)
+                    self:updateStoreIntention(intent_id, "failed", { error = "server_job_lost" })
+                    if batch_id then self:processStoreBatch(batch_id) end
                 else
                     UIManager:scheduleIn(POLL_SECONDS, poll)
                 end
@@ -613,11 +726,16 @@ function Store:pollStoreAcquisition(job_id, title)
             else
                 self:removeActiveStoreJob(job.id)
                 if job.status == "completed" and job.bookId then
+                    self:updateStoreIntention(intent_id, "ready", { book_id = job.bookId })
                     Notification:notify(T(_("%1 is ready"), title or job.title))
-                    self:showCompletedStoreJob(job)
+                    self:showCompletedStoreJob(job, action)
                 elseif job.status == "failed" then
+                    self:updateStoreIntention(intent_id, "failed", { error = job.error })
                     UIManager:show(InfoMessage:new{ text = job.error or _("Book acquisition failed."), timeout = 5 })
+                elseif job.status == "cancelled" then
+                    self:updateStoreIntention(intent_id, "cancelled")
                 end
+                if batch_id then UIManager:nextTick(function() self:processStoreBatch(batch_id) end) end
             end
         end)
     end
@@ -626,11 +744,11 @@ end
 
 function Store:resumeStoreAcquisitions()
     for _, entry in ipairs(self:activeStoreJobs()) do
-        self:pollStoreAcquisition(entry.id, entry.title)
+        self:pollStoreAcquisition(entry.id, entry.title, entry.intent_id, entry.action)
     end
 end
 
-function Store:showCompletedStoreJob(job)
+function Store:showCompletedStoreJob(job, action)
     self:runConnected(function()
         local detail, err = self:fetch(_("Loading imported book..."), function() return self.client:catalogBook(job.bookId) end)
         if not detail then
@@ -638,7 +756,21 @@ function Store:showCompletedStoreJob(job)
             return
         end
         self:cacheBookDetail(detail)
-        self:showBookActionSheet(detail, { include_page_actions = true })
+        if action == "download" or action == "open" then
+            local file = self:supportedFiles(detail)[1]
+            if not file then
+                self:showBookActionSheet(detail, { include_page_actions = true })
+                return
+            end
+            local block = StoreDevice.checkDownload(self.settings, self:getCurrentDownloadDir(), file.sizeBytes)
+            if block then
+                UIManager:show(InfoMessage:new{ text = block, timeout = 4 })
+                return
+            end
+            self:downloadDefaultFile(detail, file, { open = action == "open" })
+        else
+            self:showBookActionSheet(detail, { include_page_actions = true })
+        end
     end)
 end
 
@@ -670,6 +802,30 @@ function Store:showStoreJob(job)
     UIManager:show(dialog)
 end
 
+function Store:showStoreIntention(intent)
+    local dialog
+    local buttons = {}
+    if intent.status == "failed" and intent.book then
+        buttons[#buttons + 1] = {{ text = _("Retry same source"), callback = function()
+            UIManager:close(dialog)
+            intent.status = "queued"
+            self:startStoreAcquisition(intent.book, intent.library_id, intent.folder_id, intent.source, intent.action, intent)
+        end }, { text = _("Retry another source"), callback = function()
+            UIManager:close(dialog)
+            intent.status = "queued"; intent.source = "auto"
+            self:startStoreAcquisition(intent.book, intent.library_id, intent.folder_id, "auto", intent.action, intent)
+        end }}
+    end
+    if intent.batch_id then buttons[#buttons + 1] = {{ text = _("Cancel remaining batch"), callback = function()
+        UIManager:close(dialog); self:cancelRemainingStoreBatch(intent.batch_id)
+    end }} end
+    dialog = ButtonDialog:new{
+        title = T(_("%1\n\nStatus: %2\n%3"), intent.title or _("Book"), intent.status or _("unknown"), intent.error or ""),
+        buttons = buttons,
+    }
+    UIManager:show(dialog)
+end
+
 function Store:showStoreQueue()
     self:runConnected(function()
         local jobs, err = self:fetch(_("Loading acquisitions..."), function() return self.client:catalogStoreAcquisitions() end)
@@ -678,6 +834,13 @@ function Store:showStoreQueue()
             return
         end
         local items = {}
+        for _, intent in ipairs(self:storeIntentions()) do
+            items[#items + 1] = {
+                text = T(_("%1 - %2"), intent.title, intent.status),
+                kind = "store-intent",
+                intent = intent,
+            }
+        end
         for _, job in ipairs(jobs) do
             items[#items + 1] = {
                 text = T(_("%1 - %2"), job.title, job.status),
@@ -700,6 +863,24 @@ function Store:showStoreActions()
         buttons = {
             {{ text = _("Search books"), callback = function() UIManager:close(dialog); self:promptStoreSearch() end }},
             {{ text = _("Browse genres"), callback = function() UIManager:close(dialog); self:showStoreGenres(context.store_home) end }},
+            {{ text = _("Get all visible"), callback = function()
+                UIManager:close(dialog); self:startStoreBatch(context.books or {}, "download")
+            end }, { text = _("Get unread series"), callback = function()
+                UIManager:close(dialog)
+                local books = {}
+                for _, book in ipairs(context.books or {}) do
+                    if book.seriesName and not book.alreadyRead then books[#books + 1] = book end
+                end
+                self:startStoreBatch(books, "download")
+            end }},
+            {{ text = self.settings.store_wifi_only and _("Wi-Fi only: On") or _("Wi-Fi only: Off"), callback = function()
+                self:persistSetting("store_wifi_only", not self.settings.store_wifi_only); UIManager:close(dialog)
+            end }, { text = self.settings.store_charging_only and _("Charging only: On") or _("Charging only: Off"), callback = function()
+                self:persistSetting("store_charging_only", not self.settings.store_charging_only); UIManager:close(dialog)
+            end }},
+            {{ text = _("Preview finished-book cleanup"), callback = function()
+                UIManager:close(dialog); self:showStoreCleanupPreview()
+            end }},
             {{ text = self:storeHideRead() and _("Show read books") or _("Hide read books"), callback = function()
                 UIManager:close(dialog)
                 self:persistSetting("store_hide_read", not self:storeHideRead())

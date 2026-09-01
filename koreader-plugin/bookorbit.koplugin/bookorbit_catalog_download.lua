@@ -148,11 +148,11 @@ function CatalogDownload.install(Catalog)
         return splitDownloadPreview(download_dir, relative, filetype)
     end
 
-    function Catalog:downloadDefaultFile(detail, file)
+    function Catalog:downloadDefaultFile(detail, file, options)
         local filename = safeFilenameBase(detail)
         local filetype = string.lower(file.format or "bin")
         local local_path = self:getLocalDownloadPath(filename, filetype, file.devicePath)
-        self:checkDownloadFile(local_path, detail, file)
+        self:checkDownloadFile(local_path, detail, file, options)
     end
 
     function Catalog:showDownloadOptions(detail)
@@ -268,10 +268,10 @@ function CatalogDownload.install(Catalog)
         UIManager:show(dialog)
     end
 
-    function Catalog:checkDownloadFile(local_path, detail, file)
+    function Catalog:checkDownloadFile(local_path, detail, file, options)
         local function download()
             UIManager:nextTick(function()
-                self:downloadFile(local_path, detail, file)
+                self:downloadFile(local_path, detail, file, options)
             end)
         end
 
@@ -303,7 +303,8 @@ function CatalogDownload.install(Catalog)
             math.floor(received / (256 * 1024))
     end
 
-    function Catalog:downloadFile(local_path, detail, file)
+    function Catalog:downloadFile(local_path, detail, file, options)
+        options = options or {}
         local filename = local_path:match("[^/]+$") or safeFilenameBase(detail)
         local total = file.sizeBytes
         local root = self:getCurrentDownloadDir()
@@ -387,7 +388,11 @@ function CatalogDownload.install(Catalog)
                     self:updateItems()
                 end
             end
-            self:showDownloadedDialog(local_path, linked)
+            if options.open then
+                self:openDownloadedFile(local_path)
+            else
+                self:showDownloadedDialog(local_path, linked)
+            end
         end)
     end
 
