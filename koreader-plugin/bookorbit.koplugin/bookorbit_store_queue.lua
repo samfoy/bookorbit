@@ -24,6 +24,14 @@ end
 
 function Queue.enqueue(queue, intent)
     queue = Queue.normalize(queue)
+    if intent.intent_id then
+        for index, existing in ipairs(queue) do
+            if existing.intent_id == intent.intent_id then
+                queue[index] = copy(intent)
+                return queue, queue[index]
+            end
+        end
+    end
     for _, existing in ipairs(queue) do
         if existing.external_id == intent.external_id
                 and existing.status ~= "failed" and existing.status ~= "cancelled" then

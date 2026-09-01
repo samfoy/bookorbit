@@ -22,6 +22,15 @@ assert(#queue == 1, "queue must deduplicate active intentions by external id")
 assert(queue[1].action == "open")
 queue = Queue.transition(queue, queue[1].intent_id, "ready", { book_id = 42 })
 assert(queue[1].status == "ready" and queue[1].book_id == 42)
+local retry = {
+    intent_id = queue[1].intent_id,
+    external_id = queue[1].external_id,
+    title = queue[1].title,
+    action = queue[1].action,
+    status = "queued",
+}
+queue = Queue.enqueue(queue, retry)
+assert(#queue == 1 and queue[1].status == "queued", "retry must replace its prior terminal intention rather than duplicate its id")
 queue = Queue.enqueue(queue, { external_id = "b", title = "B", action = "download", status = "queued", batch_id = "batch" })
 queue = Queue.enqueue(queue, { external_id = "c", title = "C", action = "download", status = "acquiring", batch_id = "batch" })
 queue = Queue.cancelRemaining(queue, "batch")

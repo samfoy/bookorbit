@@ -69,11 +69,14 @@ export class KoreaderStoreService {
     const trending = enrichSection(home.trending);
     const genreShelves = home.genreShelves.map(enrichSection);
     const candidates = [trending, ...genreShelves].flatMap((section) => section.items);
-    const [personalizedShelves, hardcoverShelves, storygraphShelves] = await Promise.all([
+    const [personalizedResult, hardcoverResult, storygraphResult] = await Promise.allSettled([
       this.personalization.getShelves(user, candidates),
       this.hardcoverTrackers.getShelves(user.id),
       this.storygraphTrackers.getShelves(user.id),
     ]);
+    const personalizedShelves = personalizedResult.status === 'fulfilled' ? personalizedResult.value : [];
+    const hardcoverShelves = hardcoverResult.status === 'fulfilled' ? hardcoverResult.value : [];
+    const storygraphShelves = storygraphResult.status === 'fulfilled' ? storygraphResult.value : [];
     const trackerShelves: KoreaderStoreShelf[] = [];
     for (const shelf of [...hardcoverShelves, ...storygraphShelves]) {
       trackerShelves.push({ ...shelf, items: shelf.items.length > 0 ? await this.phase2.enrichResults(user, shelf.items) : [] });

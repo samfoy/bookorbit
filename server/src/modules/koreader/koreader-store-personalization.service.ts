@@ -110,7 +110,12 @@ export class KoreaderStorePersonalizationService {
   ) {}
 
   async getShelves(user: RequestUser, candidates: ExternalBookSearchResult[]): Promise<KoreaderStoreShelf[]> {
-    const [seeds, upNext] = await Promise.all([this.getSeeds(user.id), this.dashboard.getScroller(ScrollerType.UP_NEXT_IN_SERIES, user, 12)]);
+    const [seedResult, upNextResult] = await Promise.allSettled([
+      this.getSeeds(user.id),
+      this.dashboard.getScroller(ScrollerType.UP_NEXT_IN_SERIES, user, 12),
+    ]);
+    const seeds = seedResult.status === 'fulfilled' ? seedResult.value : [];
+    const upNext = upNextResult.status === 'fulfilled' ? upNextResult.value : [];
     const forYou = buildPersonalizedForYou(candidates, seeds);
     const shelves: KoreaderStoreShelf[] = [];
     if (forYou.length > 0) {
