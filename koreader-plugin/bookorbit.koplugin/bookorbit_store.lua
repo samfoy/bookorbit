@@ -313,8 +313,10 @@ function Store:loadStoreHome(push)
 end
 
 -- A shelf row opens the existing cover grid over the books the index already
--- holds, pushed so Back pops straight back to the index with its focus.
-function Store:showStoreShelf(shelf)
+-- holds. Menu selection pushes so Back pops to the index with its focus; a
+-- reload (refresh, sort, EPUB-only, hide-read) must replace in place instead,
+-- or Back would return to the same shelf it was already showing.
+function Store:showStoreShelf(shelf, push)
     shelf = shelf or {}
     local books = Store.mapBooks(shelf.items)
     Store.overlayDeviceState(self, books)
@@ -330,7 +332,7 @@ function Store:showStoreShelf(shelf)
         page = 1,
         page_count = 1,
     }
-    self:switchTo(context.title, self:storeBookItems(books), context, true)
+    self:switchTo(context.title, self:storeBookItems(books), context, push ~= false)
 end
 
 function Store:storeBookItems(books)
@@ -454,6 +456,7 @@ function Store:loadStoreSearch(query, push)
                 unavailable[#unavailable + 1] = PROVIDER_LABELS[name] or name
             end
         end
+        local items = self:storeBookItems(books)
         local context = {
             kind = "store-books",
             title = T(_("Search: %1"), query),
@@ -463,9 +466,18 @@ function Store:loadStoreSearch(query, push)
             page = 1,
             page_count = 1,
         }
-        local items = self:storeBookItems(books)
+        -- An empty result has no book payload, so it must not claim to be a book
+        -- grid: bookMode() would route it into the mosaic/list cover renderer.
+        -- It stays an ordinary Store menu page offering Search again.
         if #books == 0 then
             items = { { text = _("Search again"), kind = "store-search" } }
+            context = {
+                kind = "store-empty",
+                title = T(_("Search: %1"), query),
+                subtitle = searchSubtitle(0, unavailable),
+                books = books,
+                store_query = query,
+            }
         end
         self:switchTo(context.title, items, context, push)
     end)
@@ -1106,7 +1118,7 @@ function Store:reloadStoreContext(context)
     if context.kind == "store-index" then
         self:loadStoreHome(false)
     elseif context.store_shelf then
-        self:showStoreShelf(context.store_shelf)
+        self:showStoreShelf(context.store_shelf, false)
     elseif context.store_query then
         self:loadStoreSearch(context.store_query, false)
     elseif context.kind == "store-books" then

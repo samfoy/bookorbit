@@ -1812,7 +1812,7 @@ end
 
 function BookOrbitCatalog:storeMode()
     local kind = self.current_context and self.current_context.kind
-    return kind == "store-index" or kind == "store-books" or kind == "store-jobs"
+    return kind == "store-index" or kind == "store-books" or kind == "store-jobs" or kind == "store-empty"
 end
 
 function BookOrbitCatalog:detailMode()
