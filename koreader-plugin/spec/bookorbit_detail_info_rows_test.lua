@@ -220,6 +220,8 @@ function header_menu:readStatusLabel() return nil end
 function header_menu:supportedFiles() return {} end
 function header_menu:onDeviceFilePath() return nil end
 function header_menu:downloadButtonLabel() return "Download" end
+function header_menu:storePrimaryAction() return { text = "Get", action = "get", enabled = true } end
+function header_menu:showStoreBookActions() end
 
 header_menu:buildDetailHeader({
     title = "The Left Hand of Darkness",
@@ -233,5 +235,30 @@ assertEqual(header_menu.detail_series_line ~= nil, true,
 header_menu:buildDetailHeader({ title = "Standalone", authors = { "Someone" } }, 600)
 assertEqual(header_menu.detail_series_line, nil,
     "a book with no series renders no series line")
+
+header_menu:buildDetailHeader({
+    title = "The Glass Archive",
+    authors = { "Mara Venn" },
+    external = true,
+    storeBook = { externalId = "hardcover:1" },
+    seriesName = "Archive Cycle",
+    seriesIndex = 1,
+    rating = 4.4,
+    genres = { "Fantasy" },
+    tags = { "Hardcover" },
+    metaLines = { "Archive Cycle #1 - 2026 - 352 pages", "4.4 - Hardcover" },
+}, 600)
+assertEqual(header_menu.detail_series_line, nil,
+    "external detail does not duplicate series outside its two metadata lines")
+assertEqual(header_menu.detail_meta_line.text, "Archive Cycle #1 - 2026 - 352 pages",
+    "external detail renders its first metadata line")
+assertEqual(header_menu.detail_meta_line_2.text, "4.4 - Hardcover",
+    "external detail renders its second metadata line")
+assertEqual(header_menu.detail_rating_stars, nil,
+    "external detail does not add a third rating row")
+assertEqual(header_menu.detail_more_pills_button, nil,
+    "external detail does not add a third genre/provider pill row")
+assertEqual(header_menu.detail_download_button.text, "Get",
+    "external detail renders the explicit Store primary action")
 
 print("bookorbit_detail_info_rows_test.lua: ok")

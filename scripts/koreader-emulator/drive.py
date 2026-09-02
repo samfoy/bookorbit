@@ -83,9 +83,9 @@ def main() -> None:
     if args.scenario == "store-detail":
         width = int(os.environ.get("KOREADER_EMULATOR_WIDTH", "758"))
         height = int(os.environ.get("KOREADER_EMULATOR_HEIGHT", "1024"))
-        click(round(width * 0.04), round(height * 0.031))
-        click(round(width * 0.50), round(height * 0.161), pause=3.0)
-        click(round(width * 0.17), round(height * 0.27), pause=2.0)
+        open_store(width, height)
+        store_index_dpad()
+        key("Return", pause=3.0)
         return
     if args.scenario == "store-acquire":
         width = int(os.environ.get("KOREADER_EMULATOR_WIDTH", "758"))

@@ -1943,10 +1943,11 @@ end
 function BookOrbitCatalog:updatePageInfo(select_number)
     Menu.updatePageInfo(self, select_number)
     if self:detailMode() then
+        local detail = self.current_context and self.current_context.detail
         local prev_book, next_book, current_idx = self:getAdjacentDetailBooks()
         local parent = self.stack[#self.stack]
         local parent_context = parent and parent.context
-        if parent_context and parent_context.books and current_idx then
+        if detail and not detail.standalone and parent_context and parent_context.books and current_idx then
             self.page_info_left_chev:show()
             self.page_info_right_chev:show()
             self.page_info_first_chev:show()

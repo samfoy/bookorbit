@@ -339,13 +339,111 @@ function Store:storeBookItems(books)
     local items = {}
     for _, book in ipairs(books or {}) do
         local acquiring = Store.storeJobForBook(self, book.externalId) ~= nil
+        local badge = book.storeBadge or Store.stateBadge(self, book, acquiring)
+        local author = firstAuthor(book)
+        local parts = { book.title or _("Untitled") }
+        if author then parts[#parts + 1] = author end
+        if badge then parts[#parts + 1] = badge end
         items[#items + 1] = {
-            text = book.title .. " - " .. Store.stateBadge(self, book, acquiring),
+            text = table.concat(parts, " - "),
+            title = book.title or _("Untitled"),
+            author = author,
+            badge = badge,
             kind = "store-book",
             book = book,
         }
     end
     return items
+end
+
+-- The one thing a Store result page exists to answer: press the big button and
+-- what happens. Each state names its own verb, so the label is never a guess.
+-- Pure: it reads the overlaid book state and returns a descriptor; the caller
+-- owns the effect and routes it through the existing acquisition/open paths.
+function Store:storePrimaryAction(book)
+    book = book or {}
+    if self:storeJobForBook(book.externalId) then
+        return { text = _("Getting"), action = "acquiring", enabled = false }
+    end
+    if book.onDevice then
+        if book.localPath then
+            return { text = _("Open"), action = "open", enabled = true, path = book.localPath }
+        end
+        return { text = _("On device"), action = "none", enabled = false }
+    end
+    if (book.alreadyOwned or book.inBookOrbit) and book.bookId then
+        return { text = _("Download"), action = "download", enabled = true, book_id = book.bookId }
+    end
+    return { text = _("Get"), action = "get", enabled = true }
+end
+
+-- The required order after the primary action. Each entry names an existing
+-- Store path; unavailable ones are dropped rather than shown disabled.
+function Store:storeSecondaryActions(book)
+    book = book or {}
+    local actions = { { text = _("Description"), action = "description" } }
+    local author = firstAuthor(book)
+    if author then
+        actions[#actions + 1] = {
+            text = T(_("More by %1"), author),
+            action = "author",
+            value = author,
+        }
+    end
+    local hardcover_id
+    for _, source in ipairs(book.sources or {}) do
+        if source.source == "hardcover" then hardcover_id = source.externalId end
+    end
+    if hardcover_id then
+        actions[#actions + 1] = { text = _("Similar books"), action = "similar", value = hardcover_id }
+    end
+    local genre = (book.genres or {})[1]
+    if genre and genre.name then
+        actions[#actions + 1] = { text = genre.name, action = "genre", value = genre.slug }
+    end
+    return actions
+end
+
+-- Secondary metadata as at most two lines: identity facts, then reception.
+-- A line with nothing in it is omitted, so an external book with no metadata
+-- renders no empty rows rather than a column of placeholders.
+function Store.storeDetailMetaLines(book)
+    book = book or {}
+    local function line(parts)
+        return #parts > 0 and table.concat(parts, " - ") or nil
+    end
+    local function present(value)
+        return value ~= nil and tostring(value):match("%S") ~= nil
+    end
+    local function add(parts, value)
+        if present(value) then parts[#parts + 1] = tostring(value) end
+    end
+
+    local identity = {}
+    if present(book.seriesName) then
+        local series = tostring(book.seriesName)
+        if present(book.seriesIndex) then series = T(_("%1 #%2"), series, tostring(book.seriesIndex)) end
+        add(identity, series)
+    end
+    add(identity, book.publishedYear)
+    if present(book.pageCount) then add(identity, T(_("%1 pages"), tostring(book.pageCount))) end
+    add(identity, book.language)
+
+    local reception = {}
+    if tonumber(book.rating) then add(reception, book.rating) end
+    local providers = {}
+    for _, source in ipairs(book.sources or {}) do
+        local name = tostring(source.source or "")
+        if name:match("%S") then providers[#providers + 1] = PROVIDER_LABELS[name] or name end
+    end
+    if #providers > 0 then reception[#reception + 1] = table.concat(providers, ", ") end
+
+    local lines = {}
+    local identity_line = line(identity)
+    local reception_line = line(reception)
+    if identity_line then lines[#lines + 1] = identity_line end
+    if reception_line then lines[#lines + 1] = reception_line end
+    return lines
 end
 
 function Store:loadStoreBrowse(kind, value, page, title, push)
@@ -524,6 +622,10 @@ function Store.storeDetail(book)
         files = {},
         relatedSections = {},
         external = true,
+        -- Reached from a Store result, not from a paged catalog list, so the
+        -- inherited "Book 1 of N" chrome has nothing to count.
+        standalone = true,
+        metaLines = Store.storeDetailMetaLines(book),
         storeBook = book,
         recommendationReason = book.recommendationReason,
     }
@@ -533,29 +635,50 @@ function Store:showStoreBook(book)
     self:showBookDetail(Store.storeDetail(book), { external = true })
 end
 
+function Store:runStorePrimaryAction(book, primary)
+    primary = primary or self:storePrimaryAction(book)
+    if primary.action == "get" then
+        self:showStoreAcquire(book)
+    elseif primary.action == "download" then
+        self:showOwnedStoreBook(book)
+    elseif primary.action == "open" and primary.path then
+        self:openDownloadedFile(primary.path)
+    end
+end
+
+function Store:runStoreSecondaryAction(book, action)
+    if action.action == "description" then
+        UIManager:show(TextViewer:new{ title = book.title, text = self:storeDescription(book) })
+    elseif action.action == "author" then
+        self:loadStoreBrowse("author", action.value, 1, nil, true)
+    elseif action.action == "similar" then
+        self:loadStoreBrowse("similar", action.value, 1, nil, true)
+    elseif action.action == "genre" then
+        self:loadStoreBrowse("genre", action.value, 1, nil, true)
+    end
+end
+
 function Store:showStoreBookActions(book)
     local dialog
-    local buttons = {{
-        { text = _("Get"), callback = function() UIManager:close(dialog); self:showStoreAcquire(book) end },
-        { text = _("Description"), callback = function()
+    local primary = self:storePrimaryAction(book)
+    local buttons = { { {
+        text = primary.text,
+        enabled = primary.enabled ~= false,
+        callback = function()
             UIManager:close(dialog)
-            UIManager:show(TextViewer:new{ title = book.title, text = self:storeDescription(book) })
-        end },
-    }}
-    local author = firstAuthor(book)
-    if author then buttons[#buttons + 1] = {{ text = T(_("More by %1"), author), callback = function()
-        UIManager:close(dialog); self:loadStoreBrowse("author", author, 1, nil, true)
-    end }} end
-    local hardcover_id
-    for _, source in ipairs(book.sources or {}) do
-        if source.source == "hardcover" then hardcover_id = source.externalId end
+            self:runStorePrimaryAction(book, primary)
+        end,
+    } } }
+    for _, action in ipairs(self:storeSecondaryActions(book)) do
+        local selected = action
+        buttons[#buttons + 1] = { {
+            text = selected.text,
+            callback = function()
+                UIManager:close(dialog)
+                self:runStoreSecondaryAction(book, selected)
+            end,
+        } }
     end
-    if hardcover_id then buttons[#buttons + 1] = {{ text = _("Similar books"), callback = function()
-        UIManager:close(dialog); self:loadStoreBrowse("similar", hardcover_id, 1, nil, true)
-    end }} end
-    if book.genres and book.genres[1] then buttons[#buttons + 1] = {{ text = book.genres[1].name, callback = function()
-        UIManager:close(dialog); self:loadStoreBrowse("genre", book.genres[1].slug, 1, nil, true)
-    end }} end
     if book.onDevice and book.bookId then buttons[#buttons + 1] = {{ text = _("Remove from device"), callback = function()
         UIManager:close(dialog)
         local ok, err = StoreDevice.removeFromDevice(self, book.bookId)

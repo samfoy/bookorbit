@@ -1070,8 +1070,8 @@ function DashboardCoverCard:init()
     if with_caption then
         local title_face = Font:getFace("cfont", CAPTION_TITLE_FONT_SIZE)
         local sub_face = Font:getFace("cfont", CAPTION_SUB_FONT_SIZE)
-        local sub_text = (book and book.storeBadge) or hasProgress(book) and formatProgress(book.progressPercentage)
-            or (book and firstAuthor(book)) or ""
+        local sub_text = (book and firstAuthor(book)) or hasProgress(book) and formatProgress(book.progressPercentage)
+            or (book and book.storeBadge) or ""
         table.insert(col, VerticalSpan:new{ width = Size.span.vertical_default })
         table.insert(col, CenterContainer:new{
             dimen = Geom:new{ w = inner_w, h = lineHeight(title_face) },

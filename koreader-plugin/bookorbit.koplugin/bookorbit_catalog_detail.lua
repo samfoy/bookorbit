@@ -994,13 +994,22 @@ end
 -- Page count is deliberately absent: the progress line right below already
 -- carries it, and the Book info sheet lists it again.
 function CatalogDetail.detailHeroMetaLine(_unused, detail)
+    if detail.external then
+        return type(detail.metaLines) == "table" and detail.metaLines[1] or nil
+    end
     local parts = {}
     if detail.publishedYear then table.insert(parts, tostring(detail.publishedYear)) end
     if detail.publisher then table.insert(parts, detail.publisher) end
     return #parts > 0 and table.concat(parts, " - ") or nil
 end
 
+function CatalogDetail.detailSecondaryMetaLine(_unused, detail)
+    if not detail.external then return nil end
+    return type(detail.metaLines) == "table" and detail.metaLines[2] or nil
+end
+
 function CatalogDetail.detailPillItems(_unused, detail)
+    if detail.external then return {} end
     local items = {}
     local seen = {}
     local function add(value)
@@ -1252,15 +1261,7 @@ end
 -- glanceable and one tap to change, without competing with the action button.
 function CatalogDetail:buildDetailProgress(detail, width)
     local label_face = Font:getFace("xx_smallinfofont", 12)
-    if detail.external then
-        return TextBoxWidget:new{
-            text = _("Available from BookOrbit Store"),
-            width = width,
-            height = lineHeight(label_face),
-            height_overflow_show_ellipsis = true,
-            face = label_face,
-        }
-    end
+    if detail.external then return nil end
     -- A caption, not a headline: the chevron carries the affordance, so it sits
     -- at the same weight and size as the progress text it shares the line with
     -- rather than out-shouting it.
@@ -1297,10 +1298,12 @@ end
 
 function CatalogDetail:buildDetailButtons(detail, width)
     if detail.external then
+        local primary = self:storePrimaryAction(detail.storeBook)
         self.detail_download_button = Button:new{
-            text = _("Get & explore"),
+            text = primary.text,
             width = width,
             height = DETAIL_BUTTON_HEIGHT,
+            enabled = primary.enabled ~= false,
             text_font_size = 15,
             callback = function()
                 self:showStoreBookActions(detail.storeBook)
@@ -1348,20 +1351,26 @@ function CatalogDetail:buildDetailHeader(detail, width)
     self.detail_read_button = nil
     self.detail_download_button = nil
     self.detail_more_pills_button = nil
+    self.detail_rating_stars = nil
     self.detail_series_line = nil
     self.detail_meta_line = nil
+    self.detail_meta_line_2 = nil
+    self.detail_external = detail.external == true
 
     local title_face = Font:getFace("cfont", 21)
     local author_face = Font:getFace("smallinfofont", 16)
     local meta_face = Font:getFace("x_smallinfofont", 13)
     -- Static helper: calling it with `self:` passes the catalog as the detail
     -- and silently yields no series line at all.
-    local series_line = CatalogDetail.detailSeriesLine(detail)
+    local series_line
+    if not detail.external then series_line = CatalogDetail.detailSeriesLine(detail) end
     local meta_line = self:detailHeroMetaLine(detail)
+    local meta_line_2 = self:detailSecondaryMetaLine(detail)
 
     local function buildTop(with_series)
         self.detail_series_line = nil
         self.detail_meta_line = nil
+        self.detail_meta_line_2 = nil
         local group = VerticalGroup:new{ align = "left" }
         table.insert(group, TextBoxWidget:new{
             text = BD.auto(detail.title or _("Untitled")),
@@ -1408,8 +1417,24 @@ function CatalogDetail:buildDetailHeader(detail, width)
             table.insert(group, VerticalSpan:new{ width = DETAIL_GAP_XS })
             table.insert(group, self.detail_meta_line)
         end
-        table.insert(group, VerticalSpan:new{ width = DETAIL_GAP_S })
-        table.insert(group, self:buildDetailRating(detail, text_w))
+        if meta_line_2 then
+            self.detail_meta_line_2 = DetailTapLineWidget:new{
+                text = meta_line_2,
+                width = text_w,
+                face = meta_face,
+                callback = function()
+                    self:showBookInfo(detail)
+                end,
+            }
+            table.insert(group, VerticalSpan:new{ width = DETAIL_GAP_XS })
+            table.insert(group, self.detail_meta_line_2)
+        end
+        local rating
+        if not detail.external then rating = self:buildDetailRating(detail, text_w) end
+        if rating then
+            table.insert(group, VerticalSpan:new{ width = DETAIL_GAP_S })
+            table.insert(group, rating)
+        end
         local pills = self:buildDetailPills(detail, text_w)
         if pills then
             table.insert(group, VerticalSpan:new{ width = DETAIL_GAP_S })
@@ -1419,8 +1444,11 @@ function CatalogDetail:buildDetailHeader(detail, width)
     end
 
     local bottom = VerticalGroup:new{ align = "left" }
-    table.insert(bottom, self:buildDetailProgress(detail, text_w))
-    table.insert(bottom, VerticalSpan:new{ width = DETAIL_GAP_M })
+    local progress = self:buildDetailProgress(detail, text_w)
+    if progress then
+        table.insert(bottom, progress)
+        table.insert(bottom, VerticalSpan:new{ width = DETAIL_GAP_M })
+    end
     table.insert(bottom, self:buildDetailButtons(detail, text_w))
 
     -- The right column is pinned to the cover's top and bottom edges, so the
@@ -1437,10 +1465,13 @@ function CatalogDetail:buildDetailHeader(detail, width)
     table.insert(right, VerticalSpan:new{ width = flex })
     table.insert(right, bottom)
 
+    local cover = detail.external and not path
+        and HorizontalSpan:new{ width = cover_w }
+        or buildCoverWidget(detail, cover_w, cover_h, path, state)
     return HorizontalGroup:new{
         align = "top",
         HorizontalSpan:new{ width = DETAIL_INSET },
-        buildCoverWidget(detail, cover_w, cover_h, path, state),
+        cover,
         HorizontalSpan:new{ width = DETAIL_GAP_M },
         right,
         HorizontalSpan:new{ width = DETAIL_INSET },
@@ -1653,7 +1684,7 @@ end
 -- Right are reserved for what genuinely sits side by side, which is only the
 -- rating stars. Packing the lot into one row meant up to eleven Right presses
 -- to reach the download button, along an axis the layout never suggested.
-function CatalogDetail:detailHeaderFocusRows()
+function CatalogDetail:detailHeaderFocusRows(detail)
     local rows = {}
     local function addRow(...)
         local row = {}
@@ -1666,16 +1697,24 @@ function CatalogDetail:detailHeaderFocusRows()
         return row
     end
 
+    local action_row
+    if detail and detail.external then
+        action_row = addRow(self.detail_download_button)
+        if action_row then action_row.is_primary = true end
+    end
     addRow(self.detail_series_line)
     addRow(self.detail_meta_line)
+    addRow(self.detail_meta_line_2)
     addRow(unpack(self.detail_rating_stars or {}))
     addRow(self.detail_more_pills_button)
     addRow(self.detail_status_button)
     -- Read and Download are the same slot: a book on the device shows one, a
     -- book still on the server the other. It is also why the page was opened,
     -- so the cursor starts here instead of five rows above it.
-    local action_row = addRow(self.detail_read_button, self.detail_download_button)
-    if action_row then action_row.is_primary = true end
+    if not (detail and detail.external) then
+        action_row = addRow(self.detail_read_button, self.detail_download_button)
+        if action_row then action_row.is_primary = true end
+    end
     return rows
 end
 
@@ -1696,7 +1735,7 @@ function CatalogDetail:updateDetailItems(select_number, no_recalculate_dimen)
     table.insert(self.item_group, header)
     local used = DETAIL_GAP_S + header:getSize().h
 
-    self.layout = self:detailHeaderFocusRows()
+    self.layout = self:detailHeaderFocusRows(detail)
 
     if active_related then
         local desc_max = DETAIL_DESCRIPTION_HEIGHT

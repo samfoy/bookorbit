@@ -124,7 +124,7 @@ assertEqual(row, nil, "an empty list builds no row")
 -- Down. Only the rating stars share a row, because only they sit side by side.
 local function rows(page)
     page.detailHeaderFocusRows = CatalogDetail.detailHeaderFocusRows
-    return page:detailHeaderFocusRows()
+    return page:detailHeaderFocusRows({ external = page.detail_external == true })
 end
 
 local full = rows{
@@ -158,5 +158,45 @@ local sparse = rows{ detail_download_button = "download" }
 assertEqual(#sparse, 1, "a header with one control builds one row")
 assertEqual(sparse[1][1], "download", "holding that control")
 assertEqual(#rows{}, 0, "a header with no controls builds no rows")
+
+-- Store details expose their explicit primary action first in D-pad order and
+-- route it through the existing Store action sheet.
+local opened
+local external_page = {
+    storePrimaryAction = function()
+        return { text = "Get", action = "get", enabled = true }
+    end,
+    showStoreBookActions = function(_, book) opened = book end,
+}
+external_page.buildDetailButtons = CatalogDetail.buildDetailButtons
+local store_book = { externalId = "hardcover:1", title = "Piranesi" }
+local primary_button = external_page:buildDetailButtons({ external = true, storeBook = store_book }, 400)
+assertEqual(primary_button.text, "Get", "external primary action uses the Store state label")
+assertEqual(primary_button.enabled, true, "the Store primary action is enabled when actionable")
+primary_button.callback()
+assertEqual(opened, store_book, "the primary action reuses the existing Store action owner")
+
+local external_rows = rows{
+    detail_external = true,
+    detail_meta_line = "meta",
+    detail_download_button = "get",
+}
+assertEqual(external_rows[1][1], "get", "Store primary action is first in D-pad order")
+assertEqual(external_rows[1].is_primary, true, "Store primary action remains the primary focus row")
+
+-- External metadata uses only the Store-provided two concise lines.
+assertEqual(CatalogDetail.detailHeroMetaLine(nil, {
+    external = true,
+    metaLines = { "Series - 2020 - 245 pages - en", "4.2 - Hardcover" },
+}), "Series - 2020 - 245 pages - en", "external hero uses the first condensed metadata line")
+assertEqual(CatalogDetail.detailSecondaryMetaLine(nil, {
+    external = true,
+    metaLines = { "Series - 2020", "4.2 - Hardcover" },
+}), "4.2 - Hardcover", "external hero uses the second condensed metadata line")
+assertEqual(CatalogDetail.detailPillItems(nil, {
+    external = true,
+    genres = { "Fantasy" },
+    tags = { "Hardcover" },
+})[1], nil, "external detail does not add a third metadata pill row")
 
 print("bookorbit_detail_focus_test.lua: ok")

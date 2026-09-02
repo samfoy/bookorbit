@@ -134,4 +134,40 @@ assert(nav.current_context.kind == "store-index",
     "Back after reloading a shelf must reach the Store index, not the same shelf")
 assert(nav.restored_focus == pushed_focus, "Back must restore the focus the index was left at")
 
+-- Standalone external detail must not inherit Book 1 of 1 pagination from its
+-- Store result parent, while local catalog details keep that navigation.
+local function pageWidget()
+    return {
+        text = nil,
+        shown = true,
+        setText = function(self, value) self.text = value end,
+        show = function(self) self.shown = true end,
+        hide = function(self) self.shown = false end,
+        showHide = function(self, value) self.shown = value end,
+        enableDisable = function() end,
+        enable = function() end,
+        disableWithoutDimming = function() end,
+    }
+end
+local detail_book = { id = "hardcover:1", title = "Piranesi" }
+local detail_nav = newMenu({
+    current_context = { kind = "detail", detail = { id = "hardcover:1", standalone = true } },
+    stack = { { context = { kind = "store-books", books = { detail_book }, page = 1, total = 1 } } },
+    paths = { true },
+    page_info_text = pageWidget(),
+    page_info_left_chev = pageWidget(), page_info_right_chev = pageWidget(),
+    page_info_first_chev = pageWidget(), page_info_last_chev = pageWidget(),
+    page_return_arrow = pageWidget(),
+    getAdjacentDetailBooks = Catalog.getAdjacentDetailBooks,
+})
+Catalog.updatePageInfo(detail_nav)
+assert(detail_nav.page_info_text.text == "", "standalone Store detail must not show Book 1 of 1")
+assert(detail_nav.page_info_left_chev.shown == false and detail_nav.page_info_right_chev.shown == false,
+    "standalone Store detail must hide catalog pagination chevrons")
+
+detail_nav.current_context.detail.standalone = false
+Catalog.updatePageInfo(detail_nav)
+assert(detail_nav.page_info_text.text == "Book 1 of 1",
+    "local/paged catalog detail must retain Book N of N navigation")
+
 print("bookorbit_store_navigation_test.lua: ok")
