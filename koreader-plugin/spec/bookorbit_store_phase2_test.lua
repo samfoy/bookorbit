@@ -83,13 +83,25 @@ local personalized_home = {
 }
 local home_menu = {
     on_device = {},
+    settings = {},
     storeBookItems = Store.storeBookItems,
     storeJobForBook = function() return nil end,
+    activeStoreJobs = Store.activeStoreJobs,
+    storeIntentions = Store.storeIntentions,
+    storeRecentSearches = Store.storeRecentSearches,
+    storeActiveAcquisitionCount = Store.storeActiveAcquisitionCount,
 }
-local _, for_you_context = Store.storeHomeItems(home_menu, personalized_home, false, 1)
-local _, up_next_context = Store.storeHomeItems(home_menu, personalized_home, false, 2)
-assert(for_you_context.subtitle == "For You", "personalized shelves must lead Store home")
-assert(for_you_context.books[1].recommendationReason == "More by Susanna Clarke")
-assert(up_next_context.books[1].alreadyOwned == true, "strict up-next shelf retains local ownership")
+local index_items, index_context = Store.storeIndexItems(home_menu, personalized_home, false, false)
+assert(index_context.kind == "store-index", "Store home must be a native index")
+assert(index_items[1].text == "Search books", "Search books must lead the index")
+assert(index_items[2].text == "For You", "personalized shelves must lead the Store index browse paths")
+assert(index_items[2].shelf.items[1].recommendationReason == "More by Susanna Clarke")
+local up_next_row
+for _, item in ipairs(index_items) do
+    if item.text == "Up Next in Your Series" then up_next_row = item end
+end
+assert(up_next_row, "the strict up-next shelf must remain reachable from the index")
+local up_next_books = Store.mapBooks(up_next_row.shelf.items)
+assert(up_next_books[1].alreadyOwned == true, "strict up-next shelf retains local ownership")
 
 print("bookorbit_store_phase2_test.lua: slice 1 ok")

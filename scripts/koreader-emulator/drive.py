@@ -42,11 +42,18 @@ def open_store(width: int, height: int) -> None:
         click(round(width * 0.50), round(height * 0.161), pause=3.0)
 
 
+def store_index_dpad() -> None:
+    """Reach a Store index row using only D-pad keys, then activate it."""
+    key("Down", pause=0.4)
+    key("Down", pause=0.4)
+    key("Return", pause=3.0)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "scenario",
-        choices=["idle", "focus-tour", "open-menu", "bookorbit-menu", "store-home", "store-next-shelf", "store-detail", "store-acquire"],
+        choices=["idle", "focus-tour", "open-menu", "bookorbit-menu", "store-home", "store-index-dpad", "store-next-shelf", "store-detail", "store-acquire"],
     )
     parser.add_argument("--wait", type=float, default=4.0)
     args = parser.parse_args()
@@ -66,11 +73,12 @@ def main() -> None:
     if args.scenario == "bookorbit-menu":
         open_dashboard_menu()
         return
-    if args.scenario in ("store-home", "store-next-shelf"):
+    if args.scenario in ("store-home", "store-next-shelf", "store-index-dpad"):
         width = int(os.environ.get("KOREADER_EMULATOR_WIDTH", "758"))
         height = int(os.environ.get("KOREADER_EMULATOR_HEIGHT", "1024"))
         open_store(width, height)
         if args.scenario == "store-next-shelf": click(round(width * 0.68), round(height * 0.972), pause=2.0)
+        if args.scenario == "store-index-dpad": store_index_dpad()
         return
     if args.scenario == "store-detail":
         width = int(os.environ.get("KOREADER_EMULATOR_WIDTH", "758"))

@@ -24,7 +24,9 @@ local StoreDevice = require("bookorbit_store_device")
 
 local Store = {}
 local STORE_PAGE_SIZE = 12
+local MAX_RECENT_SEARCHES = 5
 local POLL_SECONDS = 2.5
+local PROVIDER_LABELS = { hardcover = "Hardcover", storygraph = "StoryGraph" }
 local ACTIVE_STATUS = { queued = true, downloading = true, optimizing = true, importing = true }
 local CANCELLABLE_STATUS = { queued = true, downloading = true, optimizing = true }
 
@@ -145,38 +147,117 @@ function Store:storeRequestIsCurrent(generation)
     return not self.catalog_closed and generation == self.store_request_generation
 end
 
-function Store:storeHomeItems(body, stale, page, refreshing)
-    local shelves = {}
-    for _, shelf in ipairs((body or {}).personalizedShelves or {}) do
-        if shelf.available ~= false and #(shelf.items or {}) > 0 then shelves[#shelves + 1] = shelf end
+local function countLabel(value)
+    local count = tonumber(value)
+    if not count or count < 1 then return nil end
+    return tostring(math.floor(count))
+end
+
+function Store:storeRecentSearches()
+    local stored = self.settings and self.settings.store_recent_searches
+    local recent = {}
+    for _, query in ipairs(type(stored) == "table" and stored or {}) do
+        if type(query) == "string" and query ~= "" then recent[#recent + 1] = query end
     end
-    if type(body) == "table" and type(body.trending) == "table" then shelves[#shelves + 1] = body.trending end
-    for _, shelf in ipairs((body or {}).genreShelves or {}) do shelves[#shelves + 1] = shelf end
-    page = math.max(1, math.min(tonumber(page) or 1, math.max(1, #shelves)))
-    local section = shelves[page] or { title = _("Trending this week"), kind = "trending", items = {} }
-    local books = Store.mapBooks(section.items)
-    Store.overlayDeviceState(self, books)
-    local subtitle = section.title or _("Trending this week")
+    return recent
+end
+
+function Store:storeActiveAcquisitionCount()
+    local seen, count = {}, 0
+    for _, entry in ipairs(Store.activeStoreJobs(self)) do
+        local key = tostring(entry.external_id or entry.id or "")
+        if key ~= "" and not seen[key] then
+            seen[key] = true
+            count = count + 1
+        end
+    end
+    for _, intent in ipairs(StoreQueue.active(Store.storeIntentions(self))) do
+        local key = tostring(intent.external_id or intent.intent_id or "")
+        if key ~= "" and not seen[key] then
+            seen[key] = true
+            count = count + 1
+        end
+    end
+    return count
+end
+
+-- The ordered browse paths a Store index offers, derived purely from the cached
+-- whole-home payload. Unavailable or empty shelves are dropped rather than
+-- rendered as dead rows.
+local function indexShelves(body)
+    local personalized = (body or {}).personalizedShelves or {}
+    local function shelvesOfKind(kind)
+        local matches = {}
+        for _, shelf in ipairs(personalized) do
+            if shelf.kind == kind and shelf.available ~= false and #(shelf.items or {}) > 0 then
+                matches[#matches + 1] = shelf
+            end
+        end
+        return matches
+    end
+    local ordered = {}
+    local function append(shelves)
+        for _, shelf in ipairs(shelves) do ordered[#ordered + 1] = shelf end
+    end
+    append(shelvesOfKind("for-you"))
+    local trending = type(body) == "table" and body.trending or nil
+    if type(trending) == "table" and #(trending.items or {}) > 0 then ordered[#ordered + 1] = trending end
+    append(shelvesOfKind("up-next"))
+    append(shelvesOfKind("tracker"))
+    append(shelvesOfKind("curated"))
+    return ordered
+end
+
+function Store:storeIndexItems(body, stale, refreshing)
+    local items = { { text = _("Search books"), kind = "store-search" } }
+    for _, query in ipairs(Store.storeRecentSearches(self)) do
+        items[#items + 1] = { text = query, kind = "store-recent-search", store_query = query }
+    end
+    for _, shelf in ipairs(indexShelves(body)) do
+        items[#items + 1] = {
+            text = shelf.title or _("Books"),
+            mandatory = countLabel(#(shelf.items or {})),
+            kind = "store-shelf",
+            shelf = shelf,
+        }
+    end
+    items[#items + 1] = { text = _("Browse genres"), kind = "store-genres" }
+    items[#items + 1] = {
+        text = _("Downloads"),
+        mandatory = countLabel(Store.storeActiveAcquisitionCount(self)),
+        kind = "store-jobs",
+    }
+    local subtitle
     if refreshing then
-        subtitle = subtitle .. " - " .. _("refreshing")
+        subtitle = _("refreshing")
     elseif stale then
-        subtitle = subtitle .. " - " .. _("offline cache")
+        subtitle = _("offline cache")
     end
-    return self:storeBookItems(books), {
-        kind = "store-books",
+    return items, {
+        kind = "store-index",
         title = _("Book Store"),
         subtitle = subtitle,
-        books = books,
-        page = page,
-        page_count = math.max(1, #shelves),
-        store_kind = section.kind or "trending",
-        store_value = section.value,
-        store_shelf_id = section.id,
-        store_landing = true,
         store_home = body,
         stale = stale == true,
         refreshing = refreshing == true,
     }
+end
+
+function Store:storeIndexMode()
+    return self.current_context ~= nil and self.current_context.kind == "store-index"
+end
+
+-- The index is one vertical menu of browse paths, so Menu's inherited paginator
+-- has nothing to page through. Mirrors the dashboard's own suppression.
+function Store:storeIndexPageInfo()
+    self.page_info_text:setText("")
+    self.page_info_left_chev:hide()
+    self.page_info_right_chev:hide()
+    self.page_info_first_chev:hide()
+    self.page_info_last_chev:hide()
+    self.page_info_text:disableWithoutDimming()
+    self.page_return_arrow:showHide(self.onReturn ~= nil)
+    self.page_return_arrow:enableDisable(#(self.paths or {}) > 0)
 end
 
 function Store:openBookStore()
@@ -201,7 +282,7 @@ function Store:loadStoreHome(push)
     local cached = self:storeCache()
     local connected = NetworkMgr:isConnected()
     if cached then
-        local items, context = self:storeHomeItems(cached, true, nil, connected)
+        local items, context = self:storeIndexItems(cached, not connected, connected)
         self:switchTo(context.title, items, context, push)
         if not connected then return end
     end
@@ -214,7 +295,7 @@ function Store:loadStoreHome(push)
         if not self:storeRequestIsCurrent(request_generation) then return end
         if not body then
             if cached then
-                local items, context = self:storeHomeItems(cached, true)
+                local items, context = self:storeIndexItems(cached, true, false)
                 self:switchTo(context.title, items, context, false)
             elseif err ~= "cancelled" then
                 self:showRetry(err, function() self:loadStoreHome(push) end)
@@ -222,13 +303,34 @@ function Store:loadStoreHome(push)
             return
         end
         self:cacheStoreHome(body)
-        local items, context = self:storeHomeItems(body, false)
+        local items, context = self:storeIndexItems(body, false, false)
         local navigation_push = push
         if cached then navigation_push = false end
         self:switchTo(context.title, items, context, navigation_push)
         if push == false then self:mirrorStoreShelf(body) end
         self:resumeStoreAcquisitions()
     end)
+end
+
+-- A shelf row opens the existing cover grid over the books the index already
+-- holds, pushed so Back pops straight back to the index with its focus.
+function Store:showStoreShelf(shelf)
+    shelf = shelf or {}
+    local books = Store.mapBooks(shelf.items)
+    Store.overlayDeviceState(self, books)
+    local context = {
+        kind = "store-books",
+        title = shelf.title or _("Book Store"),
+        subtitle = shelf.subtitle,
+        books = books,
+        store_kind = shelf.kind,
+        store_value = shelf.value,
+        store_shelf_id = shelf.id,
+        store_shelf = shelf,
+        page = 1,
+        page_count = 1,
+    }
+    self:switchTo(context.title, self:storeBookItems(books), context, true)
 end
 
 function Store:storeBookItems(books)
@@ -242,11 +344,6 @@ function Store:storeBookItems(books)
         }
     end
     return items
-end
-
-function Store:showStoreHomeShelf(home, page, push)
-    local items, context = self:storeHomeItems(home, false, page)
-    self:switchTo(context.title, items, context, push)
 end
 
 function Store:loadStoreBrowse(kind, value, page, title, push)
@@ -288,10 +385,20 @@ function Store:loadStoreBrowse(kind, value, page, title, push)
     end)
 end
 
+function Store:rememberStoreSearch(query)
+    local trimmed = tostring(query or ""):match("^%s*(.-)%s*$")
+    if trimmed == "" then return end
+    local recent = { trimmed }
+    for _, existing in ipairs(Store.storeRecentSearches(self)) do
+        if existing ~= trimmed and #recent < MAX_RECENT_SEARCHES then recent[#recent + 1] = existing end
+    end
+    self:persistSetting("store_recent_searches", recent)
+end
+
 function Store:promptStoreSearch()
     local dialog
     dialog = InputDialog:new{
-        title = _("Search Hardcover and StoryGraph"),
+        title = _("Search books"),
         input = "",
         input_hint = _("Title, author, or ISBN"),
         buttons = {{
@@ -308,6 +415,23 @@ function Store:promptStoreSearch()
     dialog:onShowKeyboard()
 end
 
+-- Concise prose for a result page: how many books came back, plus which
+-- provider could not answer. Never the raw API wording.
+local function searchSubtitle(count, unavailable)
+    local parts = {}
+    if count == 0 then
+        parts[#parts + 1] = _("No books found")
+    elseif count == 1 then
+        parts[#parts + 1] = _("1 book")
+    else
+        parts[#parts + 1] = T(_("%1 books"), tostring(count))
+    end
+    if #unavailable > 0 then
+        parts[#parts + 1] = T(_("%1 could not be reached"), table.concat(unavailable, ", "))
+    end
+    return table.concat(parts, " - ")
+end
+
 function Store:loadStoreSearch(query, push)
     local request_generation = self:nextStoreRequestGeneration()
     self:runConnected(function()
@@ -320,22 +444,30 @@ function Store:loadStoreSearch(query, push)
             if err ~= "cancelled" then self:showRetry(err, function() self:loadStoreSearch(query, push) end) end
             return
         end
+        self:rememberStoreSearch(query)
         local books = Store.mapBooks(body.results)
         Store.overlayDeviceState(self, books)
         local unavailable = {}
         for _, source in ipairs(body.sources or {}) do
-            if source.available == false then unavailable[#unavailable + 1] = source.source end
+            if source.available == false then
+                local name = tostring(source.source or "")
+                unavailable[#unavailable + 1] = PROVIDER_LABELS[name] or name
+            end
         end
         local context = {
             kind = "store-books",
             title = T(_("Search: %1"), query),
-            subtitle = #unavailable > 0 and T(_("Unavailable: %1"), table.concat(unavailable, ", ")) or nil,
+            subtitle = searchSubtitle(#books, unavailable),
             books = books,
             store_query = query,
             page = 1,
             page_count = 1,
         }
-        self:switchTo(context.title, self:storeBookItems(books), context, push)
+        local items = self:storeBookItems(books)
+        if #books == 0 then
+            items = { { text = _("Search again"), kind = "store-search" } }
+        end
+        self:switchTo(context.title, items, context, push)
     end)
 end
 
@@ -971,8 +1103,10 @@ end
 
 function Store:reloadStoreContext(context)
     context = context or self.current_context or {}
-    if context.store_landing or context.kind == "store-home" then
+    if context.kind == "store-index" then
         self:loadStoreHome(false)
+    elseif context.store_shelf then
+        self:showStoreShelf(context.store_shelf)
     elseif context.store_query then
         self:loadStoreSearch(context.store_query, false)
     elseif context.kind == "store-books" then

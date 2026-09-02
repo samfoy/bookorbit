@@ -55,15 +55,22 @@ local shown_detail
 Store.showStoreBook({ showBookDetail = function(_, detail) shown_detail = detail end }, books[1])
 assert(shown_detail == external_detail or (shown_detail and shown_detail.external), "Store selection must open the native detail page")
 
-local home_menu = { storeBookItems = Store.storeBookItems }
 local home = {
     trending = { title = "Trending this week", items = { books[1] } },
     genreShelves = { { title = "Fantasy", kind = "genre", value = "fantasy", items = { books[1] } } },
 }
-local _, trending_context = Store.storeHomeItems(home_menu, home, false, 1)
-local _, fantasy_context = Store.storeHomeItems(home_menu, home, false, 2)
-assert(trending_context.page_count == 2, "Store landing must page through trending and genre shelves")
-assert(fantasy_context.subtitle == "Fantasy", "Store landing second shelf must render the genre shelf")
+local shelf_opened
+local shelf_menu = {
+    on_device = {},
+    storeBookItems = Store.storeBookItems,
+    storeJobForBook = function() return nil end,
+    switchTo = function(_, _, _, context, push) shelf_opened = { context = context, push = push } end,
+}
+Store.showStoreShelf(shelf_menu, home.genreShelves[1])
+assert(shelf_opened.context.kind == "store-books", "a Store shelf must open the existing cover grid")
+assert(shelf_opened.context.title == "Fantasy", "the shelf grid must be titled after its shelf")
+assert(shelf_opened.push == true, "opening a shelf must push so Back returns to the index")
+assert(shelf_opened.context.page_count == 1, "a single shelf grid must not advertise shelf paging")
 
 local persisted
 local client_calls = 0
@@ -108,6 +115,7 @@ assert(client_calls == 1, "only one acquisition POST may run for one external bo
 local pending_searches = {}
 local search_menu = {
     catalog_closed = false,
+    settings = {},
     runConnected = function(_, callback) pending_searches[#pending_searches + 1] = callback end,
     fetch = function(_, _, callback) return callback() end,
     client = { catalogStoreSearch = function(_, query)
@@ -116,6 +124,9 @@ local search_menu = {
     nextStoreRequestGeneration = Store.nextStoreRequestGeneration,
     storeRequestIsCurrent = Store.storeRequestIsCurrent,
     storeBookItems = Store.storeBookItems,
+    storeRecentSearches = Store.storeRecentSearches,
+    rememberStoreSearch = Store.rememberStoreSearch,
+    persistSetting = function(self, key, value) self.settings[key] = value end,
     switchTo = function(self, _, _, context) self.current_context = context end,
 }
 Store.loadStoreSearch(search_menu, "old", true)

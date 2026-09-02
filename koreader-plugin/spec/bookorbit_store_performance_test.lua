@@ -45,8 +45,12 @@ local menu = {
     cacheStoreHome = Store.cacheStoreHome,
     nextStoreRequestGeneration = Store.nextStoreRequestGeneration,
     storeRequestIsCurrent = Store.storeRequestIsCurrent,
-    storeHomeItems = Store.storeHomeItems,
+    storeIndexItems = Store.storeIndexItems,
     storeBookItems = Store.storeBookItems,
+    storeRecentSearches = Store.storeRecentSearches,
+    storeActiveAcquisitionCount = Store.storeActiveAcquisitionCount,
+    activeStoreJobs = Store.activeStoreJobs,
+    storeIntentions = Store.storeIntentions,
     storeJobForBook = function() return nil end,
     persistSetting = function(self, key, value)
         self.settings[key] = value
@@ -71,9 +75,9 @@ Store.loadStoreHome(menu, true)
 assert(#switches == 1, "cached Store home must render before the connected callback runs")
 assert(#callbacks == 1, "connected refresh must be deferred through runConnected")
 assert(switches[1].context.store_home == cached, "the synchronous render must use cached shelves")
-assert(switches[1].context.stale == true, "cached connected content must be marked stale")
+assert(switches[1].context.stale == false, "a connected cached index is refreshing, not offline")
 assert(switches[1].context.refreshing == true, "cached connected content must be marked refreshing")
-assert(switches[1].context.subtitle:find("refreshing", 1, true), "connected cache subtitle must explain refresh state")
+assert(switches[1].context.subtitle == "refreshing", "connected cache subtitle must explain refresh state")
 
 callbacks[1]()
 assert(fetches == 1, "the deferred callback must fetch fresh Store home data")

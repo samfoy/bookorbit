@@ -1812,7 +1812,7 @@ end
 
 function BookOrbitCatalog:storeMode()
     local kind = self.current_context and self.current_context.kind
-    return kind == "store-home" or kind == "store-books" or kind == "store-jobs"
+    return kind == "store-index" or kind == "store-books" or kind == "store-jobs"
 end
 
 function BookOrbitCatalog:detailMode()
@@ -1980,6 +1980,8 @@ function BookOrbitCatalog:updatePageInfo(select_number)
         self.page_info_first_chev:hide()
         self.page_info_last_chev:hide()
         self.page_return_arrow:hide()
+    elseif self:storeIndexMode() then
+        self:storeIndexPageInfo()
     elseif self:pagedSectionMode() then
         local context = self.current_context
         local api_page = context.page or 1
@@ -2204,12 +2206,7 @@ function BookOrbitCatalog:updateListItems(select_number, no_recalculate_dimen)
 end
 
 function BookOrbitCatalog:onGotoPage(page)
-    if self.current_context and self.current_context.store_landing then
-        local context = self.current_context
-        if page < 1 or page > (context.page_count or 1) or page == context.page then return true end
-        self:showStoreHomeShelf(context.store_home, page, false)
-        return true
-    elseif self.current_context and self.current_context.kind == "store-books" then
+    if self.current_context and self.current_context.kind == "store-books" then
         local context = self.current_context
         if page < 1 or page > (context.page_count or 1) or page == context.page then return true end
         self:loadStoreBrowse(context.store_kind, context.store_value, page, context.title, false)
@@ -2352,6 +2349,12 @@ function BookOrbitCatalog:onMenuSelect(item)
         self:openBookStore()
     elseif item.kind == "store-search" then
         self:promptStoreSearch()
+    elseif item.kind == "store-recent-search" then
+        self:loadStoreSearch(item.store_query, true)
+    elseif item.kind == "store-shelf" then
+        self:showStoreShelf(item.shelf)
+    elseif item.kind == "store-genres" then
+        self:showStoreGenres((self.current_context or {}).store_home)
     elseif item.kind == "store-browse" then
         self:loadStoreBrowse(item.store_kind, item.store_value, 1, item.text, true)
     elseif item.kind == "store-book" then
