@@ -2210,7 +2210,17 @@ function BookOrbitCatalog:onGotoPage(page)
     if self.current_context and self.current_context.kind == "store-books" then
         local context = self.current_context
         if page < 1 or page > (context.page_count or 1) or page == context.page then return true end
-        self:loadStoreBrowse(context.store_kind, context.store_value, page, context.title, false)
+        if context.store_shelf_items then
+            local books, visible_page, page_count = self:storeShelfPage(context.store_shelf_items, page, self:itemsPerPage())
+            context.page = visible_page
+            context.page_count = page_count
+            context.books = books
+            self.item_table = self:storeBookItems(books)
+            self.itemnumber = 1
+            self:updateItems(1)
+        else
+            self:loadStoreBrowse(context.store_kind, context.store_value, page, context.title, false)
+        end
         return true
     elseif self:bookMode() then
         local context = self.current_context

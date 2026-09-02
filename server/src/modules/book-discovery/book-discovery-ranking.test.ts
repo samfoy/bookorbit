@@ -57,8 +57,12 @@ describe('rankExternalBookSearchResults', () => {
     expect(ids('Project Hail Mary', results)[0]).toBe('original');
   });
 
-  it('treats an exact primary-author match as author intent', () => {
-    const criticism = book('criticism', 'Kazuo Ishiguro', 'Barry Lewis', { ratingsCount: 0 });
+  it('keeps multi-word primary-author intent ahead of credible exact-title criticism', () => {
+    const criticism = book('criticism', 'Kazuo Ishiguro', 'Barry Lewis', {
+      hasEbook: true,
+      rating: 4.8,
+      ratingsCount: 10_000,
+    });
     const novels = [book('remains', 'The Remains of the Day', 'Kazuo Ishiguro'), book('klara', 'Klara and the Sun', 'Kazuo Ishiguro')];
 
     expect(ids('Kazuo Ishiguro', [criticism, ...novels])).toEqual(['remains', 'klara', 'criticism']);

@@ -316,21 +316,37 @@ end
 -- holds. Menu selection pushes so Back pops to the index with its focus; a
 -- reload (refresh, sort, EPUB-only, hide-read) must replace in place instead,
 -- or Back would return to the same shelf it was already showing.
-function Store:showStoreShelf(shelf, push)
+function Store:storeShelfPage(books, page, page_size)
+    books = books or {}
+    page_size = math.max(1, tonumber(page_size) or 12)
+    local page_count = math.max(1, math.ceil(#books / page_size))
+    page = math.max(1, math.min(tonumber(page) or 1, page_count))
+    local visible = {}
+    local first = (page - 1) * page_size + 1
+    for index = first, math.min(#books, first + page_size - 1) do
+        visible[#visible + 1] = books[index]
+    end
+    return visible, page, page_count
+end
+
+function Store:showStoreShelf(shelf, push, page)
     shelf = shelf or {}
-    local books = Store.mapBooks(shelf.items)
-    Store.overlayDeviceState(self, books)
+    local all_books = Store.mapBooks(shelf.items)
+    Store.overlayDeviceState(self, all_books)
+    local page_size = self.itemsPerPage and self:itemsPerPage() or 12
+    local books, visible_page, page_count = Store.storeShelfPage(self, all_books, page, page_size)
     local context = {
         kind = "store-books",
         title = shelf.title or _("Book Store"),
         subtitle = shelf.subtitle,
         books = books,
+        store_shelf_items = all_books,
         store_kind = shelf.kind,
         store_value = shelf.value,
         store_shelf_id = shelf.id,
         store_shelf = shelf,
-        page = 1,
-        page_count = 1,
+        page = visible_page,
+        page_count = page_count,
     }
     self:switchTo(context.title, self:storeBookItems(books), context, push ~= false)
 end
@@ -382,23 +398,23 @@ end
 function Store:storeSecondaryActions(book)
     book = book or {}
     local actions = { { text = _("Description"), action = "description" } }
+    local hardcover_id
+    for _, source in ipairs(book.sources or {}) do
+        if source.source == "hardcover" then hardcover_id = source.externalId end
+    end
     local author = firstAuthor(book)
-    if author then
+    if hardcover_id and author then
         actions[#actions + 1] = {
             text = T(_("More by %1"), author),
             action = "author",
             value = author,
         }
     end
-    local hardcover_id
-    for _, source in ipairs(book.sources or {}) do
-        if source.source == "hardcover" then hardcover_id = source.externalId end
-    end
     if hardcover_id then
         actions[#actions + 1] = { text = _("Similar books"), action = "similar", value = hardcover_id }
     end
     local genre = (book.genres or {})[1]
-    if genre and genre.name then
+    if hardcover_id and genre and genre.name then
         actions[#actions + 1] = { text = genre.name, action = "genre", value = genre.slug }
     end
     return actions
@@ -1241,7 +1257,7 @@ function Store:reloadStoreContext(context)
     if context.kind == "store-index" then
         self:loadStoreHome(false)
     elseif context.store_shelf then
-        self:showStoreShelf(context.store_shelf, false)
+        self:showStoreShelf(context.store_shelf, false, context.page)
     elseif context.store_query then
         self:loadStoreSearch(context.store_query, false)
     elseif context.kind == "store-books" then

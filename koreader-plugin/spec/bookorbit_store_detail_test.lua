@@ -165,6 +165,15 @@ local sparse = Store.storeSecondaryActions(storeMenu(), mapped({
 assertEqual(#sparse, 1, "a book with no author, source, or genre offers only Description")
 assertEqual(sparse[1].text, "Description")
 
+local storygraph_only = Store.storeSecondaryActions(storeMenu(), mapped({
+    id = "storygraph:1", title = "Story Book", authors = { "Story Author" },
+    genres = { { name = "Fantasy", slug = "fantasy" } },
+    sources = { { source = "storygraph", externalId = "sg-1" } }, state = {},
+}))
+assertEqual(#storygraph_only, 1,
+    "StoryGraph-only results must not offer Hardcover-owned author or genre browse actions")
+assertEqual(storygraph_only[1].text, "Description")
+
 -- 4. Secondary metadata condenses to at most two lines and hides empty fields.
 local lines = Store.storeDetailMetaLines(mapped(NOT_OWNED))
 assert(#lines <= 2, "external detail metadata must fit two concise lines")

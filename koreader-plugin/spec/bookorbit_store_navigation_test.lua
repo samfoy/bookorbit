@@ -134,6 +134,30 @@ assert(nav.current_context.kind == "store-index",
     "Back after reloading a shelf must reach the Store index, not the same shelf")
 assert(nav.restored_focus == pushed_focus, "Back must restore the focus the index was left at")
 
+-- A tracker shelf can carry 24 books. Its second local page must use the books
+-- already in the home payload instead of issuing a provider browse request.
+local shelf_books = {}
+for index = 1, 24 do
+    shelf_books[index] = { id = "hardcover:" .. index, externalId = "hardcover:" .. index,
+        title = "Book " .. index, authors = { "Author" } }
+end
+local paged = newMenu({
+    current_context = {
+        kind = "store-books", title = "Want to Read", page = 1, page_count = 2,
+        books = { unpack(shelf_books, 1, 12) }, store_shelf_items = shelf_books,
+    },
+    item_table = {},
+    itemsPerPage = function() return 12 end,
+    updateItems = function(self) self.updated = true end,
+    loadStoreBrowse = function() error("local shelf pagination must not fetch") end,
+})
+Catalog.onGotoPage(paged, 2)
+assert(paged.current_context.page == 2, "the shelf must advance to its second local page")
+assert(#paged.current_context.books == 12 and paged.current_context.books[1].title == "Book 13",
+    "the second page must contain shelf books 13 through 24")
+assert(paged.item_table[1].title == "Book 13" and paged.updated == true,
+    "local page navigation must replace and render the visible item table")
+
 -- Standalone external detail must not inherit Book 1 of 1 pagination from its
 -- Store result parent, while local catalog details keep that navigation.
 local function pageWidget()

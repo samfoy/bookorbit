@@ -67,6 +67,7 @@ export function rankExternalBookSearchResults(query: string, books: ExternalBook
 
   const queryTokens = normalizedQuery.split(' ');
   const authorIntent = books.some((book) => normalizeSearchText(book.authors[0] ?? '') === normalizedQuery);
+  const strongAuthorIntent = authorIntent && queryTokens.length > 1;
 
   return books
     .map((book, index) => {
@@ -83,7 +84,8 @@ export function rankExternalBookSearchResults(query: string, books: ExternalBook
       const sources = new Set(book.sources.map((source) => source.source));
       const credibleExactTitle = exactTitle && (book.hasEbook === true || (book.ratingsCount ?? 0) >= 1_000 || sources.size > 1);
       let intent = 0;
-      if (credibleExactTitle) intent = 6;
+      if (strongAuthorIntent && exactAuthor) intent = 7;
+      else if (credibleExactTitle) intent = 6;
       else if (authorIntent && exactAuthor) intent = 5;
       else if (exactTitle) intent = 4;
       else if (titlePrefix && titleCoverage === 1) intent = 3;

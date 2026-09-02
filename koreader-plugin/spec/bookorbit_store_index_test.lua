@@ -183,6 +183,18 @@ assert(#opened[1].context.books == 1, "the shelf grid must use the books the ind
 assert(opened[1].context.store_kind == "trending")
 assert(opened[1].items[1].kind == "store-book", "shelf books must remain selectable result rows")
 
+local many = {}
+for index = 1, 24 do many[index] = book("hardcover:" .. index, "Book " .. index) end
+shelf_menu.itemsPerPage = function() return 12 end
+opened = {}
+Store.showStoreShelf(shelf_menu, {
+    id = "tracker-24", title = "Want to Read", kind = "tracker", items = many,
+})
+assert(opened[1].context.page_count == 2, "a 24-book shelf must expose two local pages")
+assert(#opened[1].context.books == 12, "the first shelf page must be bounded to the visible page")
+assert(#opened[1].context.store_shelf_items == 24, "the context must retain all shelf books for later pages")
+assert(opened[1].items[12].title == "Book 12", "the first page ends at the page boundary")
+
 -- Behavior: the index is a single vertical menu, so it must not render page chrome.
 local Catalog = { updatePageInfo = function() end }
 local function chevron()
