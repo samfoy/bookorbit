@@ -49,11 +49,31 @@ def store_index_dpad() -> None:
     key("Return", pause=3.0)
 
 
+def store_search_dpad(query: str) -> None:
+    """Open the index's first row (Search books), type a query, submit it."""
+    key("Return", pause=1.5)
+    run("type", "--clearmodifiers", "--delay", "60", query)
+    time.sleep(0.5)
+    key("Return", pause=3.5)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "scenario",
-        choices=["idle", "focus-tour", "open-menu", "bookorbit-menu", "store-home", "store-index-dpad", "store-next-shelf", "store-detail", "store-acquire"],
+        choices=[
+            "idle",
+            "focus-tour",
+            "open-menu",
+            "bookorbit-menu",
+            "store-home",
+            "store-index",
+            "store-index-dpad",
+            "store-search-results",
+            "store-next-shelf",
+            "store-detail",
+            "store-acquire",
+        ],
     )
     parser.add_argument("--wait", type=float, default=4.0)
     args = parser.parse_args()
@@ -73,12 +93,18 @@ def main() -> None:
     if args.scenario == "bookorbit-menu":
         open_dashboard_menu()
         return
-    if args.scenario in ("store-home", "store-next-shelf", "store-index-dpad"):
+    if args.scenario in ("store-home", "store-index", "store-next-shelf", "store-index-dpad"):
         width = int(os.environ.get("KOREADER_EMULATOR_WIDTH", "758"))
         height = int(os.environ.get("KOREADER_EMULATOR_HEIGHT", "1024"))
         open_store(width, height)
         if args.scenario == "store-next-shelf": click(round(width * 0.68), round(height * 0.972), pause=2.0)
         if args.scenario == "store-index-dpad": store_index_dpad()
+        return
+    if args.scenario == "store-search-results":
+        width = int(os.environ.get("KOREADER_EMULATOR_WIDTH", "758"))
+        height = int(os.environ.get("KOREADER_EMULATOR_HEIGHT", "1024"))
+        open_store(width, height)
+        store_search_dpad(os.environ.get("KOREADER_EMULATOR_QUERY", "archive"))
         return
     if args.scenario == "store-detail":
         width = int(os.environ.get("KOREADER_EMULATOR_WIDTH", "758"))
