@@ -1,3 +1,4 @@
+import { getBookMediaKind } from '@bookorbit/types';
 import type {
   HardcoverActiveSyncStatus,
   HardcoverBookSyncState,
@@ -476,13 +477,17 @@ export class HardcoverSyncService {
       let hardcoverReadId: number | null = syncState?.hardcoverReadId ?? null;
       let progressSynced = true;
 
-      if (startDate || endDate || book.progress != null) {
-        if (book.progress != null && !match.editionPages) {
+      const audiobookProgressSeconds = this.isAudiobook(book) ? book.audiobookProgressSeconds : null;
+      const hasNativeAudiobookProgress = audiobookProgressSeconds != null;
+      const hasEbookProgress = !this.isAudiobook(book) && book.progress != null;
+
+      if (startDate || endDate || hasNativeAudiobookProgress || hasEbookProgress) {
+        if (hasEbookProgress && !match.editionPages) {
           throw new Error('missing_edition_pages');
         }
 
-        const progressPages = book.progress != null && match.editionPages ? Math.round((book.progress / 100) * match.editionPages) : undefined;
-        progressSynced = book.progress == null || progressPages != null;
+        const progressPages = hasEbookProgress && match.editionPages ? Math.round((book.progress! / 100) * match.editionPages) : undefined;
+        progressSynced = !hasNativeAudiobookProgress && !hasEbookProgress ? true : hasNativeAudiobookProgress || progressPages != null;
 
         const reads = await this.findUserBookReads(userId, token, userBookId);
         const targetReadId = this.resolveTargetReadId(hardcoverReadId, reads);
@@ -493,22 +498,30 @@ export class HardcoverSyncService {
           startedAt: startDate,
           finishedAt: endDate,
           progressPages,
+          progressSeconds: audiobookProgressSeconds ?? undefined,
           editionId: match.hardcoverEditionId ?? undefined,
         });
 
-        if (progressPages != null && hardcoverReadId != null) {
+        if ((progressPages != null || audiobookProgressSeconds != null) && hardcoverReadId != null) {
           await this.updateAdditionalOpenReads(userId, token, {
             reads,
             primaryReadId: hardcoverReadId,
             startedAt: startDate,
             finishedAt: endDate,
             progressPages,
+            progressSeconds: audiobookProgressSeconds ?? undefined,
             editionId: match.hardcoverEditionId ?? undefined,
           });
 
-          this.logger.log(
-            `[hardcover.sync_progress] [end] userId=${userId} bookId=${book.bookId} hardcoverBookId=${match.hardcoverBookId} hardcoverReadId=${hardcoverReadId} durationMs=${Date.now() - startedAt} progress=${book.progress} progressPages=${progressPages} - progress sent to Hardcover`,
-          );
+          if (audiobookProgressSeconds != null) {
+            this.logger.log(
+              `[hardcover.sync_progress] [end] userId=${userId} bookId=${book.bookId} hardcoverBookId=${match.hardcoverBookId} hardcoverReadId=${hardcoverReadId} durationMs=${Date.now() - startedAt} progressSeconds=${audiobookProgressSeconds} - progress sent to Hardcover`,
+            );
+          } else {
+            this.logger.log(
+              `[hardcover.sync_progress] [end] userId=${userId} bookId=${book.bookId} hardcoverBookId=${match.hardcoverBookId} hardcoverReadId=${hardcoverReadId} durationMs=${Date.now() - startedAt} progress=${book.progress} progressPages=${progressPages} - progress sent to Hardcover`,
+            );
+          }
         }
       }
 
@@ -546,7 +559,7 @@ export class HardcoverSyncService {
         syncError: null,
         lastSyncedAt: new Date(),
         lastSyncedStatus: book.status,
-        lastSyncedProgress: progressSynced ? book.progress : null,
+        lastSyncedProgress: progressSynced ? this.syncProgress(book) : null,
         lastSyncedRating: book.rating,
         lastSyncedStartedAt: startDate,
         lastSyncedFinishedAt: endDate,
@@ -636,6 +649,7 @@ export class HardcoverSyncService {
       startedAt?: string | null;
       finishedAt?: string | null;
       progressPages?: number;
+      progressSeconds?: number;
       editionId?: number;
     },
   ): Promise<number | null> {
@@ -643,6 +657,7 @@ export class HardcoverSyncService {
     if (input.startedAt) object['started_at'] = input.startedAt;
     if (input.finishedAt) object['finished_at'] = input.finishedAt;
     if (input.progressPages != null) object['progress_pages'] = input.progressPages;
+    if (input.progressSeconds != null) object['progress_seconds'] = input.progressSeconds;
     if (input.editionId != null) object['edition_id'] = input.editionId;
 
     if (input.existingReadId) {
@@ -698,7 +713,8 @@ export class HardcoverSyncService {
       primaryReadId: number;
       startedAt?: string | null;
       finishedAt?: string | null;
-      progressPages: number;
+      progressPages?: number;
+      progressSeconds?: number;
       editionId?: number;
     },
   ): Promise<void> {
@@ -711,7 +727,8 @@ export class HardcoverSyncService {
         this.updateUserBookRead(userId, token, readId, {
           ...(input.startedAt ? { started_at: input.startedAt } : {}),
           ...(input.finishedAt ? { finished_at: input.finishedAt } : {}),
-          progress_pages: input.progressPages,
+          ...(input.progressPages != null ? { progress_pages: input.progressPages } : {}),
+          ...(input.progressSeconds != null ? { progress_seconds: input.progressSeconds } : {}),
           ...(input.editionId != null ? { edition_id: input.editionId } : {}),
         }).catch(() => undefined),
       ),
@@ -725,7 +742,7 @@ export class HardcoverSyncService {
     const metadataHardcoverId = this.parseNumericHardcoverMetadataId(book.hardcoverMetadataId);
     if (metadataHardcoverId !== null && metadataHardcoverId !== state.hardcoverBookId) return true;
     if (book.status !== state.lastSyncedStatus) return true;
-    if (book.progress !== state.lastSyncedProgress) return true;
+    if (this.syncProgress(book) !== state.lastSyncedProgress) return true;
     if (book.rating !== state.lastSyncedRating) return true;
     const startDate = toDateString(book.startedAt);
     const endDate = toDateString(book.finishedAt);
@@ -744,11 +761,19 @@ export class HardcoverSyncService {
     return {
       lastSyncedAt: new Date(),
       lastSyncedStatus: book.status,
-      lastSyncedProgress: book.progress,
+      lastSyncedProgress: this.syncProgress(book),
       lastSyncedRating: book.rating,
       lastSyncedStartedAt: toDateString(book.startedAt),
       lastSyncedFinishedAt: toDateString(book.finishedAt),
     };
+  }
+
+  private syncProgress(book: BookSyncData): number | null {
+    return this.isAudiobook(book) ? book.audiobookProgressSeconds : book.progress;
+  }
+
+  private isAudiobook(book: BookSyncData): boolean {
+    return getBookMediaKind(book.format) === 'audiobook';
   }
 
   private resolveSyncDecision(

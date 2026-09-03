@@ -26,6 +26,7 @@ export interface BookSyncData {
   finishedAt: Date | null;
   rating: number | null;
   progress: number | null;
+  audiobookProgressSeconds: number | null;
   attemptsUpdatedAt?: Date | null;
 }
 
@@ -232,6 +233,7 @@ export class HardcoverRepository {
         finishedAt: schema.userBookStatus.finishedAt,
         rating: schema.userBookRatings.rating,
         progress: maxProgressSq.maxProgress,
+        audiobookProgressSeconds: schema.audiobookProgress.positionSeconds,
         attemptsUpdatedAt: attemptsSq.updatedAt,
       })
       .from(schema.books)
@@ -241,6 +243,7 @@ export class HardcoverRepository {
       .leftJoin(maxProgressSq, eq(maxProgressSq.bookId, schema.books.id))
       .leftJoin(firstAuthorSq, eq(firstAuthorSq.bookId, schema.books.id))
       .leftJoin(attemptsSq, eq(attemptsSq.bookId, schema.books.id))
+      .leftJoin(schema.audiobookProgress, and(eq(schema.audiobookProgress.bookId, schema.books.id), eq(schema.audiobookProgress.userId, userId)))
       .leftJoin(schema.bookFiles, eq(schema.bookFiles.id, schema.books.primaryFileId));
 
     const statusFilter = options.statuses ? inArray(schema.userBookStatus.status, options.statuses) : ne(schema.userBookStatus.status, 'unread');

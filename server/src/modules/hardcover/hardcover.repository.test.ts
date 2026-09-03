@@ -159,7 +159,7 @@ describe('HardcoverRepository', () => {
     expect(updateChain.set).toHaveBeenCalledWith({ lastSyncedAt: syncedAt });
   });
 
-  it('findSyncableBooks selects the local pageCount and format', async () => {
+  it('findSyncableBooks selects text and native audiobook progress', async () => {
     const { repo, db } = makeRepository();
     const selectArgs: Array<Record<string, unknown>> = [];
     const chain: Record<string, unknown> = {};
@@ -178,6 +178,7 @@ describe('HardcoverRepository', () => {
     expect(mainSelect).toBeDefined();
     expect(mainSelect).toHaveProperty('pageCount');
     expect(mainSelect).toHaveProperty('format');
+    expect(mainSelect).toHaveProperty('audiobookProgressSeconds');
   });
 
   it('findSyncableBook returns a book from findSyncableBooks', async () => {
