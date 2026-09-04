@@ -317,14 +317,14 @@ describe('HardcoverSyncService', () => {
       expect(ebookReadInput).not.toHaveProperty('progress_seconds');
     });
 
-    it('syncs native audiobook position without requiring edition pages', async () => {
+    it.each(['m4b', 'epub'] as const)('syncs native audiobook position for a %s-primary book without ebook progress', async (format) => {
       const audioBook = {
         ...readingBook,
         bookId: 693,
         isbn13: null,
         hardcoverMetadataId: '2593004',
         pageCount: null,
-        format: 'm4b',
+        format,
         progress: null,
         audiobookProgressSeconds: 14850.6,
       };

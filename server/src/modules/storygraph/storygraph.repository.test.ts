@@ -1,7 +1,17 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { Permission } from '@bookorbit/types';
 
+import { audiobookProgress, bookFiles } from '../../db/schema';
 import { StorygraphRepository } from './storygraph.repository';
+
+function flattenSql(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) return value.map(flattenSql).join(' ');
+  if (!value || typeof value !== 'object') return '';
+
+  const record = value as { queryChunks?: unknown[]; value?: unknown; name?: unknown };
+  return [flattenSql(record.value), flattenSql(record.queryChunks), typeof record.name === 'string' ? record.name : ''].join(' ');
+}
 
 function makeReturningChain(row: unknown) {
   const chain = {
@@ -204,6 +214,30 @@ describe('StorygraphRepository', () => {
     expect(mainSelect).toHaveProperty('authorName');
     expect(mainSelect).toHaveProperty('format');
     expect(mainSelect).toHaveProperty('audiobookProgress');
+  });
+
+  it('countPendingSyncableBooks compares the selected audiobook progress for dual-format books', async () => {
+    const { repo, db } = makeRepository();
+    const subquery = {} as Record<string, ReturnType<typeof vi.fn>>;
+    subquery.from = vi.fn().mockReturnValue(subquery);
+    subquery.innerJoin = vi.fn().mockReturnValue(subquery);
+    subquery.where = vi.fn().mockReturnValue(subquery);
+    subquery.groupBy = vi.fn().mockReturnValue(subquery);
+    subquery.as = vi.fn().mockReturnValue(subquery);
+
+    const where = vi.fn().mockResolvedValue([{ count: 0 }]);
+    const query = {} as Record<string, ReturnType<typeof vi.fn>>;
+    query.from = vi.fn().mockReturnValue(query);
+    query.leftJoin = vi.fn().mockReturnValue(query);
+    query.where = where;
+    db.select.mockReset().mockReturnValueOnce(subquery).mockReturnValueOnce(query);
+
+    await repo.countPendingSyncableBooks(7, undefined, { bookSyncMode: 'all_eligible' });
+
+    const joinedTables = query.leftJoin.mock.calls.map((call: unknown[]) => call[0]);
+    expect(joinedTables).toContain(bookFiles);
+    expect(joinedTables).toContain(audiobookProgress);
+    expect(flattenSql(where.mock.calls[0][0])).toContain('percentage');
   });
 
   it('findBooksWithSyncErrors selects failure fields filtered to errored states', async () => {

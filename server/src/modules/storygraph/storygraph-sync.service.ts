@@ -661,7 +661,8 @@ export class StorygraphSyncService {
   }
 
   private syncProgress(book: BookSyncData): number | null {
-    return getBookMediaKind(book.format) === 'audiobook' ? book.audiobookProgress : book.progress;
+    const usesNativeAudiobookProgress = book.audiobookProgress != null && (getBookMediaKind(book.format) === 'audiobook' || book.progress == null);
+    return usesNativeAudiobookProgress ? book.audiobookProgress : book.progress;
   }
 
   private isSameActiveStatus(prev: StorygraphActiveSyncStatus | null, next: StorygraphActiveSyncStatus | null): boolean {

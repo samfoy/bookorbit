@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { Permission } from '@bookorbit/types';
+import { BOOK_FORMATS, isAudioFormat, Permission } from '@bookorbit/types';
 import type { ContentFilterRules, ReadStatus, StorygraphBookSyncMode } from '@bookorbit/types';
 import { and, asc, eq, gt, inArray, isNotNull, isNull, ne, or, sql, type SQL } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
@@ -10,6 +10,8 @@ import * as schema from '../../db/schema';
 import type { NewStorygraphBookState, NewStorygraphUserSetting, StorygraphBookState, StorygraphUserSetting } from '../../db/schema';
 
 type Db = NodePgDatabase<typeof schema>;
+
+const AUDIO_FORMATS = BOOK_FORMATS.filter(isAudioFormat);
 
 export interface BookSyncData {
   bookId: number;
@@ -235,12 +237,20 @@ export class StorygraphRepository {
     if (bookScopeClauses === null) return 0;
 
     const maxProgressSq = this.buildMaxProgressSubquery(userId, bookScopeClauses);
+    const selectedProgress = sql<number | null>`case
+      when ${schema.audiobookProgress.percentage} is not null
+        and (${inArray(schema.bookFiles.format, AUDIO_FORMATS)} or ${maxProgressSq.maxProgress} is null)
+      then ${schema.audiobookProgress.percentage}
+      else ${maxProgressSq.maxProgress}
+    end`;
 
     const [row] = await this.db
       .select({ count: sql<number>`count(*)::int` })
       .from(schema.books)
       .leftJoin(schema.userBookStatus, and(eq(schema.userBookStatus.bookId, schema.books.id), eq(schema.userBookStatus.userId, userId)))
       .leftJoin(maxProgressSq, eq(maxProgressSq.bookId, schema.books.id))
+      .leftJoin(schema.bookFiles, eq(schema.bookFiles.id, schema.books.primaryFileId))
+      .leftJoin(schema.audiobookProgress, and(eq(schema.audiobookProgress.bookId, schema.books.id), eq(schema.audiobookProgress.userId, userId)))
       .leftJoin(
         schema.storygraphBookState,
         and(eq(schema.storygraphBookState.userId, userId), eq(schema.storygraphBookState.bookId, schema.books.id)),
@@ -253,7 +263,7 @@ export class StorygraphRepository {
           or(
             isNull(schema.storygraphBookState.lastSyncedAt),
             sql`${schema.userBookStatus.status} is distinct from ${schema.storygraphBookState.lastSyncedStatus}`,
-            sql`${maxProgressSq.maxProgress} is distinct from ${schema.storygraphBookState.lastSyncedProgress}`,
+            sql`${selectedProgress} is distinct from ${schema.storygraphBookState.lastSyncedProgress}`,
           ),
         ),
       );

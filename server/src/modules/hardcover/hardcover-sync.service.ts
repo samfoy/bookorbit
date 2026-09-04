@@ -477,10 +477,11 @@ export class HardcoverSyncService {
       let hardcoverReadId: number | null = syncState?.hardcoverReadId ?? null;
       let progressSynced = true;
 
-      const audiobookProgressSeconds = this.isAudiobook(book) ? book.audiobookProgressSeconds : null;
+      const usesNativeAudiobookProgress = this.usesNativeAudiobookProgress(book);
+      const audiobookProgressSeconds = usesNativeAudiobookProgress ? book.audiobookProgressSeconds : null;
       const hardcoverProgressSeconds = audiobookProgressSeconds != null ? Math.round(audiobookProgressSeconds) : null;
       const hasNativeAudiobookProgress = audiobookProgressSeconds != null;
-      const hasEbookProgress = !this.isAudiobook(book) && book.progress != null;
+      const hasEbookProgress = !usesNativeAudiobookProgress && book.progress != null;
 
       if (startDate || endDate || hasNativeAudiobookProgress || hasEbookProgress) {
         if (hasEbookProgress && !match.editionPages) {
@@ -770,7 +771,11 @@ export class HardcoverSyncService {
   }
 
   private syncProgress(book: BookSyncData): number | null {
-    return this.isAudiobook(book) ? book.audiobookProgressSeconds : book.progress;
+    return this.usesNativeAudiobookProgress(book) ? book.audiobookProgressSeconds : book.progress;
+  }
+
+  private usesNativeAudiobookProgress(book: BookSyncData): boolean {
+    return book.audiobookProgressSeconds != null && (this.isAudiobook(book) || book.progress == null);
   }
 
   private isAudiobook(book: BookSyncData): boolean {

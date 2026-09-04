@@ -229,10 +229,10 @@ describe('StorygraphSyncService', () => {
       );
     });
 
-    it('syncs native audiobook percentage when the book has no ebook progress row', async () => {
+    it.each(['m4b', 'epub'] as const)('syncs native audiobook percentage for a %s-primary book with no ebook progress row', async (format) => {
       const audiobook = {
         ...readingBook,
-        format: 'm4b',
+        format,
         progress: null,
         audiobookProgress: 35.75,
       };
