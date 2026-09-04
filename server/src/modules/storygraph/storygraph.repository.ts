@@ -20,6 +20,7 @@ export interface BookSyncData {
   format: string | null;
   status: string;
   progress: number | null;
+  audiobookProgress: number | null;
 }
 
 export interface StorygraphBookAccessScope {
@@ -283,11 +284,13 @@ export class StorygraphRepository {
         format: schema.bookFiles.format,
         status: sql<string>`coalesce(${schema.userBookStatus.status}, 'unread')`,
         progress: maxProgressSq.maxProgress,
+        audiobookProgress: schema.audiobookProgress.percentage,
       })
       .from(schema.books)
       .leftJoin(schema.userBookStatus, and(eq(schema.userBookStatus.bookId, schema.books.id), eq(schema.userBookStatus.userId, userId)))
       .leftJoin(schema.bookMetadata, eq(schema.bookMetadata.bookId, schema.books.id))
       .leftJoin(maxProgressSq, eq(maxProgressSq.bookId, schema.books.id))
+      .leftJoin(schema.audiobookProgress, and(eq(schema.audiobookProgress.bookId, schema.books.id), eq(schema.audiobookProgress.userId, userId)))
       .leftJoin(firstAuthorSq, eq(firstAuthorSq.bookId, schema.books.id))
       .leftJoin(schema.bookFiles, eq(schema.bookFiles.id, schema.books.primaryFileId))
       .leftJoin(

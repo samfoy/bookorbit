@@ -203,6 +203,7 @@ describe('StorygraphRepository', () => {
     expect(mainSelect).toHaveProperty('title');
     expect(mainSelect).toHaveProperty('authorName');
     expect(mainSelect).toHaveProperty('format');
+    expect(mainSelect).toHaveProperty('audiobookProgress');
   });
 
   it('findBooksWithSyncErrors selects failure fields filtered to errored states', async () => {

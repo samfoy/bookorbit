@@ -1,4 +1,4 @@
-import type { ReadStatus } from '@bookorbit/types';
+import { getBookMediaKind, type ReadStatus } from '@bookorbit/types';
 import type {
   StorygraphActiveSyncStatus,
   StorygraphSyncFailure,
@@ -439,6 +439,7 @@ export class StorygraphSyncService {
     initialState?: StorygraphBookStateSnapshot,
   ): Promise<StorygraphSyncBookResult> {
     const startedAt = Date.now();
+    const progress = this.syncProgress(book);
 
     const storygraphStatus = STATUS_MAP[book.status as ReadStatus];
     if (!storygraphStatus) {
@@ -472,8 +473,8 @@ export class StorygraphSyncService {
 
       // StoryGraph's read transition logs the remaining pages. A subsequent progress update
       // would create another journal entry for the full page count.
-      if (book.progress != null && storygraphStatus !== STORYGRAPH_STATUS.READ) {
-        await this.updateProgress(userId, cookies, match.storygraphBookId, book.progress);
+      if (progress != null && storygraphStatus !== STORYGRAPH_STATUS.READ) {
+        await this.updateProgress(userId, cookies, match.storygraphBookId, progress);
       }
 
       await this.repo.upsertBookState({
@@ -485,7 +486,7 @@ export class StorygraphSyncService {
         syncError: null,
         lastSyncedAt: new Date(),
         lastSyncedStatus: book.status,
-        lastSyncedProgress: book.progress,
+        lastSyncedProgress: progress,
       });
 
       this.logger.log(
@@ -593,7 +594,7 @@ export class StorygraphSyncService {
   private hasChanges(book: BookSyncData, state: StorygraphBookStateSnapshot): boolean {
     if (!state?.lastSyncedAt) return true;
     if (book.status !== state.lastSyncedStatus) return true;
-    if (book.progress !== state.lastSyncedProgress) return true;
+    if (this.syncProgress(book) !== state.lastSyncedProgress) return true;
     return false;
   }
 
@@ -655,8 +656,12 @@ export class StorygraphSyncService {
     return {
       lastSyncedAt: new Date(),
       lastSyncedStatus: book.status,
-      lastSyncedProgress: book.progress,
+      lastSyncedProgress: this.syncProgress(book),
     };
+  }
+
+  private syncProgress(book: BookSyncData): number | null {
+    return getBookMediaKind(book.format) === 'audiobook' ? book.audiobookProgress : book.progress;
   }
 
   private isSameActiveStatus(prev: StorygraphActiveSyncStatus | null, next: StorygraphActiveSyncStatus | null): boolean {

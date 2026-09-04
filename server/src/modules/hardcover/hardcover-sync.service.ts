@@ -478,6 +478,7 @@ export class HardcoverSyncService {
       let progressSynced = true;
 
       const audiobookProgressSeconds = this.isAudiobook(book) ? book.audiobookProgressSeconds : null;
+      const hardcoverProgressSeconds = audiobookProgressSeconds != null ? Math.round(audiobookProgressSeconds) : null;
       const hasNativeAudiobookProgress = audiobookProgressSeconds != null;
       const hasEbookProgress = !this.isAudiobook(book) && book.progress != null;
 
@@ -498,7 +499,7 @@ export class HardcoverSyncService {
           startedAt: startDate,
           finishedAt: endDate,
           progressPages,
-          progressSeconds: audiobookProgressSeconds ?? undefined,
+          progressSeconds: hardcoverProgressSeconds ?? undefined,
           editionId: match.hardcoverEditionId ?? undefined,
         });
 
@@ -509,13 +510,13 @@ export class HardcoverSyncService {
             startedAt: startDate,
             finishedAt: endDate,
             progressPages,
-            progressSeconds: audiobookProgressSeconds ?? undefined,
+            progressSeconds: hardcoverProgressSeconds ?? undefined,
             editionId: match.hardcoverEditionId ?? undefined,
           });
 
           if (audiobookProgressSeconds != null) {
             this.logger.log(
-              `[hardcover.sync_progress] [end] userId=${userId} bookId=${book.bookId} hardcoverBookId=${match.hardcoverBookId} hardcoverReadId=${hardcoverReadId} durationMs=${Date.now() - startedAt} progressSeconds=${audiobookProgressSeconds} - progress sent to Hardcover`,
+              `[hardcover.sync_progress] [end] userId=${userId} bookId=${book.bookId} hardcoverBookId=${match.hardcoverBookId} hardcoverReadId=${hardcoverReadId} durationMs=${Date.now() - startedAt} progressSeconds=${hardcoverProgressSeconds} - progress sent to Hardcover`,
             );
           } else {
             this.logger.log(

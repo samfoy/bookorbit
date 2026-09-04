@@ -229,6 +229,43 @@ describe('StorygraphSyncService', () => {
       );
     });
 
+    it('syncs native audiobook percentage when the book has no ebook progress row', async () => {
+      const audiobook = {
+        ...readingBook,
+        format: 'm4b',
+        progress: null,
+        audiobookProgress: 35.75,
+      };
+      mockSettingsService.getCookiesForUser.mockResolvedValue(cookies);
+      mockRepo.findSyncableBook.mockResolvedValue(audiobook);
+      mockRepo.findBookState.mockResolvedValue({
+        storygraphBookId: 'audio-123',
+        matchMethod: 'cached',
+        lastSyncedAt: new Date('2026-09-03T00:00:00Z'),
+        lastSyncedStatus: 'reading',
+        lastSyncedProgress: null,
+      });
+      mockMatchService.matchBook.mockResolvedValue({ storygraphBookId: 'audio-123', matchMethod: 'cached' });
+      mockClient.get.mockResolvedValue({
+        status: 200,
+        html: '<button class="read-status-label">currently reading</button><input name="read_status[book_num_of_pages]" value="0">',
+        redirectedToSignIn: false,
+      });
+
+      await expect(makeService().syncBook(1, 1)).resolves.toBe('synced');
+
+      expect(mockClient.post).toHaveBeenCalledWith(
+        1,
+        cookies,
+        '/update-progress',
+        expect.objectContaining({ 'read_status[progress_number]': '36', 'read_status[progress_type]': 'percentage', book_id: 'audio-123' }),
+        'csrf-token',
+      );
+      expect(mockRepo.upsertBookState).toHaveBeenCalledWith(
+        expect.objectContaining({ storygraphBookId: 'audio-123', lastSyncedStatus: 'reading', lastSyncedProgress: 35.75 }),
+      );
+    });
+
     it.each([
       ['rereading', 'reading'],
       ['currently reading', 'reading'],

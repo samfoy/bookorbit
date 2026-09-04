@@ -326,7 +326,7 @@ describe('HardcoverSyncService', () => {
         pageCount: null,
         format: 'm4b',
         progress: null,
-        audiobookProgressSeconds: 14850,
+        audiobookProgressSeconds: 14850.6,
       };
       mockSettingsService.getTokenForUser.mockResolvedValue('tok');
       mockRepo.findBookSyncData.mockResolvedValue(audioBook);
@@ -349,7 +349,7 @@ describe('HardcoverSyncService', () => {
         userBookId: 55,
         object: {
           started_at: '2024-01-01',
-          progress_seconds: 14850,
+          progress_seconds: 14851,
           edition_id: 32895574,
         },
       });
@@ -359,7 +359,7 @@ describe('HardcoverSyncService', () => {
           hardcoverEditionId: 32895574,
           hardcoverReadId: 77,
           lastSyncedStatus: 'reading',
-          lastSyncedProgress: 14850,
+          lastSyncedProgress: 14850.6,
         }),
       );
     });
