@@ -88,7 +88,7 @@ class Handler(BaseHTTPRequestHandler):
         path = parsed.path
         query = parse_qs(parsed.query)
         if path.endswith("/koreader/plugin/version"):
-            self.send_json({"pluginVersion": "1.8.0", "serverVersion": "emulator", "capabilities": ["catalogStore", "catalogStorePhase2"]})
+            self.send_json({"pluginVersion": "1.9.0", "serverVersion": "emulator", "capabilities": ["catalogStore", "catalogStorePhase2"]})
         elif path.endswith("/koreader/plugin/catalog/dashboard"):
             self.send_json(
                 {
@@ -102,6 +102,16 @@ class Handler(BaseHTTPRequestHandler):
                     "discover": [],
                     "readingGoal": {"goalBooks": 100, "completedBooks": 42},
                     "readingStreak": {"currentStreak": 7},
+                    "readingSummary": {
+                        "todaySeconds": 1800,
+                        "weekSeconds": 12600,
+                        "pastYearSeconds": 360000,
+                        "daySeconds": [900, 1200, 0, 3600, 2700, 2400, 1800],
+                        "sources": [
+                            {"bucket": "koreader", "readingSeconds": 216000},
+                            {"bucket": "audiobookshelf", "readingSeconds": 144000},
+                        ],
+                    },
                     "highlightOfTheDay": None,
                 }
             )

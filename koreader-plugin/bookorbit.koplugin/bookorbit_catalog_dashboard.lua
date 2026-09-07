@@ -751,7 +751,21 @@ end
 -- Local reading activity from statistics.sqlite3, cached briefly so row page
 -- turns do not reopen the database. The local streak is retained as a fallback
 -- for cached responses from servers that do not provide the account streak.
-function CatalogDashboard:dashboardStatsSummary()
+function CatalogDashboard:dashboardStatsSummary(dashboard)
+    local account = dashboard and dashboard.readingSummary
+    if type(account) == "table" then
+        local day_seconds = {}
+        for index = 1, 7 do
+            day_seconds[index] = tonumber(account.daySeconds and account.daySeconds[index]) or 0
+        end
+        return {
+            today_seconds = tonumber(account.todaySeconds) or 0,
+            week_seconds = tonumber(account.weekSeconds) or 0,
+            day_seconds = day_seconds,
+            account_sources = account.sources,
+            past_year_seconds = tonumber(account.pastYearSeconds) or 0,
+        }
+    end
     local cache = self._dash_stats_cache
     if not cache or os.time() - cache.at >= STATS_CACHE_TTL then
         cache = { summary = BookOrbitStatsReader.getReadingSummary(), at = os.time() }
@@ -952,7 +966,7 @@ function CatalogDashboard:updateDashboardItems(select_number, no_recalculate_dim
     local dashboard = context.dashboard or {}
     local continue_books = dashboard.continueReading or {}
     local action_entries = self:dashboardActionEntries(tonumber(dashboard.totalBooks or dashboard.bookCount), dashboard.browseCounts)
-    local summary = self:dashboardStatsSummary() or { today_seconds = 0, week_seconds = 0, streak_days = 0 }
+    local summary = self:dashboardStatsSummary(dashboard) or { today_seconds = 0, week_seconds = 0, streak_days = 0 }
     local stale_sections = type(context.section_stale) == "table" and context.section_stale or {}
     local highlight = type(dashboard.highlightOfTheDay) == "table" and dashboard.highlightOfTheDay or nil
 

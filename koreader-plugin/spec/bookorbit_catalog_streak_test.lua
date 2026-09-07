@@ -109,7 +109,13 @@ package.loaded["ui/widget/textwidget"] = widgetClass()
 package.loaded["ui/uimanager"] = {}
 package.loaded["ui/widget/verticalgroup"] = widgetClass()
 package.loaded["ui/widget/verticalspan"] = widgetClass()
-package.loaded["bookorbit_stats_reader"] = {}
+local local_summary_reads = 0
+package.loaded["bookorbit_stats_reader"] = {
+    getReadingSummary = function()
+        local_summary_reads = local_summary_reads + 1
+        return { today_seconds = 60, week_seconds = 120, day_seconds = { 0, 0, 0, 0, 0, 60, 60 }, streak_days = 2 }
+    end,
+}
 
 local rendered_stats = {}
 package.loaded["bookorbit_catalog_widgets"] = {
@@ -143,6 +149,24 @@ local function newStripCatalog()
 end
 
 local catalog = newStripCatalog()
+local account_summary = catalog:dashboardStatsSummary({
+    readingSummary = {
+        todaySeconds = 600,
+        weekSeconds = 3600,
+        daySeconds = { 0, 600, 0, 1200, 0, 900, 900 },
+    },
+})
+assertEqual(account_summary.today_seconds, 600, "server account summary drives today's reading")
+assertEqual(account_summary.week_seconds, 3600, "server account summary drives the seven-day total")
+assertEqual(account_summary.day_seconds[7], 900, "server account summary carries the daily sparkline")
+assertEqual(local_summary_reads, 0, "server account summary avoids the local statistics fallback")
+
+local fallback_summary = catalog:dashboardStatsSummary({})
+assertEqual(fallback_summary.today_seconds, 60, "older servers fall back to local statistics")
+assertEqual(local_summary_reads, 1, "local statistics are read only for the fallback")
+
+rendered_stats = {}
+catalog = newStripCatalog()
 catalog:buildDashboardStatsStrip({
     today_seconds = 600,
     week_seconds = 3600,

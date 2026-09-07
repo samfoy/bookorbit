@@ -12,6 +12,7 @@ import type {
   KoreaderCatalogBookDetail,
   KoreaderCatalogBookListItem,
   KoreaderCatalogBrowseCounts,
+  KoreaderCatalogReadingSummary,
   KoreaderCatalogDashboardResponse,
   KoreaderCatalogDashboardSection,
   KoreaderCatalogDashboardSectionResponse,
@@ -40,6 +41,7 @@ import { MAX_OFFSET_ROWS, isOffsetWithinLimit } from '../../common/constants/pag
 import { imageContentTypeFromPath } from '../../common/image-content-type';
 import type { RequestUser } from '../../common/types/request-user';
 import { contentDispositionHeader } from '../../common/utils/content-disposition.utils';
+import { resolveTimeZone, toDateKeyInTimeZone } from '../../common/utils/timezone.utils';
 import { storageConfig } from '../../config/config';
 import { BookReadService } from '../book/book-read.service';
 import { BookService } from '../book/book.service';
@@ -52,6 +54,7 @@ import { OpdsBookEntry, OpdsBookService } from '../opds/opds-book.service';
 import type { OpdsManifestBookRow } from '../opds/opds-book.service';
 import { RecommendationService } from '../recommendation/recommendation.service';
 import { UserBookStatusService } from '../user-book-status/user-book-status.service';
+import { UserStatisticsService } from '../user-statistics/user-statistics.service';
 import { KoreaderCatalogBooksQueryDto, KoreaderCatalogManifestQueryDto } from './dto/koreader-catalog-query.dto';
 import { AppSettingsService } from '../app-settings/app-settings.service';
 import { KoreaderPluginService } from './koreader-plugin.service';
@@ -72,6 +75,12 @@ const DETAIL_RELATED_LIMIT = 8;
 const MANIFEST_DEFAULT_PAGE_SIZE = 100;
 const MANIFEST_CURSOR_VERSION = 1;
 const MANIFEST_CURSOR_CONTRACT_CHANGED = Symbol('manifest-cursor-contract-changed');
+
+function recentDateKeys(todayKey: string, days: number): string[] {
+  const [year, month, day] = todayKey.split('-').map(Number);
+  const today = Date.UTC(year, month - 1, day, 12);
+  return Array.from({ length: days }, (_, index) => new Date(today - (days - index - 1) * 86_400_000).toISOString().slice(0, 10));
+}
 
 const NATURAL_SORT_ORDER: Record<KoreaderCatalogSort, KoreaderCatalogSortOrder> = {
   title: 'asc',
@@ -147,6 +156,7 @@ export class KoreaderCatalogService {
     private readonly appSettingsService: AppSettingsService,
     private readonly koreaderService: KoreaderService,
     private readonly pluginService: KoreaderPluginService,
+    private readonly userStatisticsService: UserStatisticsService,
     @Inject(storageConfig.KEY) private readonly storage: ConfigType<typeof storageConfig>,
   ) {}
 
@@ -162,16 +172,18 @@ export class KoreaderCatalogService {
       readStatus: 'reading' as const,
     });
 
-    const [continueReading, discover, dashboardSection, readingGoal, readingStreak, highlightOfTheDay, totalBooks, browseCounts] = await Promise.all([
-      this.getBooksPage(user, continueReadingQuery),
-      section ? Promise.resolve<KoreaderCatalogBookListItem[]>([]) : this.buildDiscover(user),
-      section ? this.buildDashboardSection(user, section) : Promise.resolve(undefined),
-      this.dashboardWidgetService.getReadingGoal(user),
-      this.dashboardWidgetService.getReadingStreak(user),
-      this.dashboardWidgetService.getHighlightOfTheDay(user),
-      this.countBooks(user, {}),
-      this.buildBrowseCounts(user),
-    ]);
+    const [continueReading, discover, dashboardSection, readingGoal, readingStreak, highlightOfTheDay, totalBooks, browseCounts, readingSummary] =
+      await Promise.all([
+        this.getBooksPage(user, continueReadingQuery),
+        section ? Promise.resolve<KoreaderCatalogBookListItem[]>([]) : this.buildDiscover(user),
+        section ? this.buildDashboardSection(user, section) : Promise.resolve(undefined),
+        this.dashboardWidgetService.getReadingGoal(user),
+        this.dashboardWidgetService.getReadingStreak(user),
+        this.dashboardWidgetService.getHighlightOfTheDay(user),
+        this.countBooks(user, {}),
+        this.buildBrowseCounts(user),
+        this.buildReadingSummary(user),
+      ]);
 
     return {
       generatedAt: new Date().toISOString(),
@@ -185,8 +197,34 @@ export class KoreaderCatalogService {
       ...(dashboardSection ? { section: dashboardSection } : {}),
       readingGoal,
       readingStreak,
+      ...(readingSummary ? { readingSummary } : {}),
       highlightOfTheDay,
     };
+  }
+
+  private async buildReadingSummary(user: RequestUser): Promise<KoreaderCatalogReadingSummary | undefined> {
+    try {
+      const [dailyRows, sourceDistribution] = await Promise.all([
+        // Ask for one extra UTC day so the first displayed local day is complete
+        // even in timezones west or east of UTC; dayKeys filters it back to seven.
+        this.userStatisticsService.getDailyReadingByBook(user, { days: 8 }),
+        this.userStatisticsService.getReadingSourceDistribution(user, { days: 365 }),
+      ]);
+      const timeZone = resolveTimeZone((user.settings as { timezone?: unknown } | undefined)?.timezone, 'UTC');
+      const dayKeys = recentDateKeys(toDateKeyInTimeZone(new Date(), timeZone), 7);
+      const totals = new Map<string, number>();
+      for (const row of dailyRows) totals.set(row.day, (totals.get(row.day) ?? 0) + row.readingSeconds);
+      const daySeconds = dayKeys.map((day) => totals.get(day) ?? 0);
+      return {
+        todaySeconds: daySeconds.at(-1) ?? 0,
+        weekSeconds: daySeconds.reduce((sum, seconds) => sum + seconds, 0),
+        pastYearSeconds: sourceDistribution.totalSeconds,
+        daySeconds,
+        sources: sourceDistribution.slices,
+      };
+    } catch {
+      return undefined;
+    }
   }
 
   async getDiscover(user: RequestUser): Promise<KoreaderCatalogDiscoverResponse> {

@@ -31,7 +31,7 @@ store = (root / 'koreader-plugin/bookorbit.koplugin/bookorbit_store.lua').read_t
 discovery = (root / 'server/src/modules/book-discovery/book-discovery.service.ts').read_text()
 hardcover = (root / 'server/src/modules/hardcover/hardcover-catalog.service.ts').read_text()
 driver = (root / 'scripts/koreader-emulator/drive.py').read_text()
-assert 'local PLUGIN_VERSION = "1.8.0"' in main
+assert 'local PLUGIN_VERSION = "1.9.0"' in main
 for anchor in ('Search books', 'recent', 'store-index'):
     assert anchor.lower() in (store + driver).lower(), anchor
 assert 'rank' in discovery.lower()

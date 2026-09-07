@@ -16,5 +16,6 @@ describe('UserStatisticsModule', () => {
       UserStatisticsRepository,
       UserStatisticsAggregationJob,
     ]);
+    expect(Reflect.getMetadata(MODULE_METADATA.EXPORTS, UserStatisticsModule)).toEqual([UserStatisticsService]);
   });
 });

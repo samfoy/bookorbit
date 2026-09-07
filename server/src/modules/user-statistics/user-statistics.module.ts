@@ -8,5 +8,6 @@ import { UserStatisticsService } from './user-statistics.service';
 @Module({
   controllers: [UserStatisticsController],
   providers: [UserStatisticsService, UserStatisticsRepository, UserStatisticsAggregationJob],
+  exports: [UserStatisticsService],
 })
 export class UserStatisticsModule {}

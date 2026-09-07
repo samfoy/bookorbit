@@ -1,4 +1,5 @@
 import type { HighlightOfTheDayWidgetData, ReadingGoalWidgetData, ReadingStreakWidgetData } from "./dashboard";
+import type { UserReadingSourceDistributionSlice } from "./user-statistics";
 
 export interface KoreaderCredentials {
   username: string;
@@ -321,6 +322,14 @@ export interface KoreaderCatalogBrowseCounts {
   smartScopes: number;
 }
 
+export interface KoreaderCatalogReadingSummary {
+  todaySeconds: number;
+  weekSeconds: number;
+  pastYearSeconds: number;
+  daySeconds: number[];
+  sources: UserReadingSourceDistributionSlice[];
+}
+
 export interface KoreaderCatalogDashboardResponse {
   generatedAt: string;
   username: string;
@@ -336,6 +345,7 @@ export interface KoreaderCatalogDashboardResponse {
   section?: KoreaderCatalogDashboardSection;
   readingGoal: ReadingGoalWidgetData;
   readingStreak: ReadingStreakWidgetData;
+  readingSummary?: KoreaderCatalogReadingSummary;
   highlightOfTheDay: HighlightOfTheDayWidgetData | null;
 }
 

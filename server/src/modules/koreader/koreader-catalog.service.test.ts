@@ -223,6 +223,20 @@ function makeService(
     getCounts: vi.fn().mockResolvedValue({ authors: 812, series: 96, annotations: 40 }),
   };
 
+  const userStatisticsService = {
+    getDailyReadingByBook: vi.fn().mockResolvedValue([
+      { day: '2026-08-31', bookId: 10, bookTitle: 'Dune', readingSeconds: 600, sessionsCount: 1 },
+      { day: '2026-09-06', bookId: 10, bookTitle: 'Dune', readingSeconds: 1_200, sessionsCount: 2 },
+    ]),
+    getReadingSourceDistribution: vi.fn().mockResolvedValue({
+      totalSeconds: 90_000,
+      slices: [
+        { bucket: 'koreader', readingSeconds: 54_000 },
+        { bucket: 'audiobookshelf', readingSeconds: 36_000 },
+      ],
+    }),
+  };
+
   const service = new KoreaderCatalogService(
     opdsBookService as never,
     bookService as never,
@@ -238,6 +252,7 @@ function makeService(
       getDeviceFileNamingPattern: vi.fn().mockResolvedValue(deviceOrganization),
     } as never,
     pluginService as never,
+    userStatisticsService as never,
     { appDataPath: '/data', bookDockPath: '/data/book-dock' },
   );
 
@@ -252,6 +267,7 @@ function makeService(
     browseCountsService,
     recommendationService,
     pluginService,
+    userStatisticsService,
   };
 }
 
@@ -290,8 +306,10 @@ describe('KoreaderCatalogService', () => {
   });
 
   it('builds a capped dashboard payload from catalog and widget data', async () => {
-    const { service, opdsBookService, dashboardWidgetService } = makeService();
-    const user = makeUser({ id: 7 });
+    const { service, opdsBookService, dashboardWidgetService, userStatisticsService } = makeService();
+    const user = makeUser({ id: 7, settings: { timezone: 'America/Los_Angeles' } });
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-07T01:00:00.000Z'));
     opdsBookService.getBooksPage.mockResolvedValueOnce({
       total: 1,
       entries: [
@@ -337,6 +355,7 @@ describe('KoreaderCatalogService', () => {
     ]);
 
     const dashboard = await service.getDashboard(user);
+    vi.useRealTimers();
 
     expect(opdsBookService.getBooksPage).toHaveBeenCalledWith(7, 'recently_read', 1, 5, { readStatus: 'reading' }, false, user.contentFilters);
     expect(opdsBookService.countBooks).toHaveBeenCalledWith(7, {}, false, user.contentFilters);
@@ -349,11 +368,37 @@ describe('KoreaderCatalogService', () => {
     expect(dashboard.discover[0]).toEqual(expect.objectContaining({ id: 22, title: 'Neuromancer' }));
     expect(dashboard.readingGoal).toEqual({ goalBooks: 24, completedBooks: 6, year: 2026 });
     expect(dashboard.readingStreak.currentStreak).toBe(4);
+    expect(dashboard).toMatchObject({
+      readingSummary: {
+        todaySeconds: 1_200,
+        weekSeconds: 1_800,
+        pastYearSeconds: 90_000,
+        daySeconds: [600, 0, 0, 0, 0, 0, 1_200],
+        sources: [
+          { bucket: 'koreader', readingSeconds: 54_000 },
+          { bucket: 'audiobookshelf', readingSeconds: 36_000 },
+        ],
+      },
+    });
     expect(dashboard.highlightOfTheDay?.bookId).toBe(10);
     expect(dashboard.generatedAt).toEqual(expect.any(String));
     expect(dashboardWidgetService.getReadingGoal).toHaveBeenCalledWith(user);
     expect(dashboardWidgetService.getReadingStreak).toHaveBeenCalledWith(user);
     expect(dashboardWidgetService.getHighlightOfTheDay).toHaveBeenCalledWith(user);
+    expect(userStatisticsService.getDailyReadingByBook).toHaveBeenCalledWith(user, { days: 8 });
+    expect(userStatisticsService.getReadingSourceDistribution).toHaveBeenCalledWith(user, { days: 365 });
+  });
+
+  it('keeps the dashboard available when unified reading statistics fail', async () => {
+    const { service, userStatisticsService } = makeService();
+    const user = makeUser({ id: 7 });
+    userStatisticsService.getDailyReadingByBook.mockRejectedValueOnce(new Error('statistics unavailable'));
+
+    const dashboard = await service.getDashboard(user);
+
+    expect(dashboard).not.toHaveProperty('readingSummary');
+    expect(dashboard.readingGoal).toEqual({ goalBooks: 24, completedBooks: 6, year: 2026 });
+    expect(dashboard.readingStreak.currentStreak).toBe(4);
   });
 
   it('carries browse counts for every dashboard tile the server can count', async () => {
