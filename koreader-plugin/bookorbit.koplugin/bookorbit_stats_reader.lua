@@ -26,10 +26,7 @@ local MAX_CACHED_STATEMENTS = 16
 
 local BOOK_ROWS_SQL = "SELECT id, md5, title, authors, last_open FROM book"
     .. " WHERE md5 IS NOT NULL AND md5 != '' AND id > ? ORDER BY id LIMIT ?;"
-local BOOK_ROWS_FILTERED_SQL = "SELECT id, md5, title, authors, last_open FROM book"
-    .. " WHERE md5 IS NOT NULL AND md5 != '' AND id > ?"
-    .. " AND NOT EXISTS (SELECT 1 FROM bookorbit_stats_books m"
-    .. " WHERE m.id_book=book.id AND m.created_by_mirror=1) ORDER BY id LIMIT ?;"
+
 local BOOK_BY_MD5_SQL = "SELECT id, title, authors, last_open FROM book WHERE md5 = ?;"
 local BOOK_IDS_SQL = "SELECT id FROM book WHERE md5 = ?;"
 local LATEST_EVENTS_SQL = "SELECT id_book, MAX(start_time) FROM page_stat_data"
@@ -158,8 +155,7 @@ end
 function Session:bookRowsAfter(after_id, limit)
     after_id = after_id or 0
     local rows = {}
-    local sql = self.has_mirror and BOOK_ROWS_FILTERED_SQL or BOOK_ROWS_SQL
-    local res = self:select(sql, { after_id, limit })
+    local res = self:select(BOOK_ROWS_SQL, { after_id, limit })
     if not res then return rows, after_id end
     for i = 1, #res[1] do
         local id = tonumber(res[1][i]) or 0

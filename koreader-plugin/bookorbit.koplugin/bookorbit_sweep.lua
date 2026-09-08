@@ -1195,6 +1195,10 @@ local function stepDone(ctx)
             setProgress(ctx, T(_("Syncing account statistics: %1 records"), totals.received or 0))
         end,
         on_finish = function(totals, mirror_err)
+            if mirror_err == "cancelled" then
+                if not ctx.finished then finish(ctx, "cancelled") end
+                return
+            end
             if totals then
                 ctx.counts.stats_mirrored = totals.inserted or 0
                 ctx.counts.stats_removed = totals.removed or 0

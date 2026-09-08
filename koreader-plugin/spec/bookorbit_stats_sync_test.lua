@@ -21,7 +21,7 @@ package.loaded["bookorbit_stats_mirror"] = {
     end,
     finishGeneration = function(generation)
         table.insert(finalized, generation)
-        return { removed = 2 }
+        return { removed = 2, inserted = 3, changed = true }
     end,
     invalidateConsumerCaches = function()
         invalidations = invalidations + 1

@@ -157,8 +157,8 @@ do
     session:eventsAfter({ 7 }, 0, 50)
     session:close()
 
-    assertEqual(seen[1]:find("bookorbit_stats_books", 1, true) ~= nil, true,
-        "mirror-created shadow books stay out of outbound enumeration")
+    assertEqual(seen[1]:find("bookorbit_stats_books", 1, true) == nil, true,
+        "mirror-created books remain enumerable so later native rows can upload")
     assertEqual(seen[2]:find("bookorbit_stats_mirror", 1, true) ~= nil, true,
         "latest-event preflight excludes mirror-owned rows")
     assertEqual(seen[3]:find("bookorbit_stats_mirror", 1, true) ~= nil, true,

@@ -44,6 +44,22 @@ CREATE TABLE IF NOT EXISTS bookorbit_stats_meta (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS bookorbit_stats_pending (
+    remote_key TEXT PRIMARY KEY,
+    generation TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    remote_book_id INTEGER NOT NULL,
+    hash TEXT NOT NULL,
+    title TEXT NOT NULL,
+    authors TEXT NOT NULL,
+    pages INTEGER NOT NULL,
+    page INTEGER NOT NULL,
+    start_time INTEGER NOT NULL,
+    duration INTEGER NOT NULL,
+    total_pages INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS bookorbit_stats_pending_generation_idx
+    ON bookorbit_stats_pending(generation);
 CREATE INDEX IF NOT EXISTS bookorbit_stats_mirror_generation_idx
     ON bookorbit_stats_mirror(generation);
 CREATE INDEX IF NOT EXISTS bookorbit_stats_mirror_native_key_idx
@@ -155,19 +171,23 @@ local moveOwnedRows
 
 local function resolveBook(conn, item, touched)
     local mapped = row(conn,
-        "SELECT b.id, m.created_by_mirror, b.md5 FROM bookorbit_stats_books m JOIN book b ON b.id=m.id_book WHERE m.remote_book_id=?;",
+        "SELECT b.id, m.created_by_mirror, b.md5, b.title, b.authors, b.pages FROM bookorbit_stats_books m JOIN book b ON b.id=m.id_book WHERE m.remote_book_id=?;",
         { item.bookId })
     if mapped then
         local mapped_id = tonumber(mapped[1])
         local mapped_created = tonumber(mapped[2]) == 1
         if tostring(mapped[3] or ""):lower() == item.hash:lower() then
-            if mapped_created then
+            if mapped_created
+                    and (tostring(mapped[4] or "") ~= item.title
+                        or tostring(mapped[5] or "") ~= item.authors
+                        or tonumber(mapped[6]) ~= math.floor(item.pages)) then
                 -- A second local row may already have the same title/authors/hash.
                 -- Metadata polish must never abort the statistics transaction on
                 -- that native uniqueness constraint; page count is always safe.
                 pcall(run, conn, "UPDATE book SET title=?,authors=? WHERE id=?;",
                     { item.title, item.authors, mapped_id })
                 run(conn, "UPDATE book SET pages=? WHERE id=?;", { math.floor(item.pages), mapped_id })
+                touched[mapped_id] = true
             end
             return mapped_id, mapped_created
         end
@@ -189,6 +209,7 @@ local function resolveBook(conn, item, touched)
         elseif mapped_created then
             run(conn, "UPDATE book SET title=?,authors=?,pages=?,md5=? WHERE id=?;",
                 { item.title, item.authors, math.floor(item.pages), item.hash:lower(), mapped_id })
+            touched[mapped_id] = true
             return mapped_id, true
         end
         -- A native row changed identity. Leave it untouched and create a new
@@ -265,12 +286,25 @@ local function applyItem(conn, item, generation, touched)
             and tonumber(tracked[3]) == start_time
             and tonumber(tracked[4]) == duration
             and tonumber(tracked[5]) == total_pages then
-        run(conn, "UPDATE bookorbit_stats_mirror SET generation=? WHERE remote_key=?;", { generation, item.key })
-        return false
+        local actual = row(conn, [[
+            SELECT duration,total_pages FROM page_stat_data
+            WHERE id_book=? AND page=? AND start_time=?;
+        ]], { id_book, page, start_time })
+        if actual then
+            local still_owned = tonumber(actual[1]) == duration and tonumber(actual[2]) == total_pages
+                and tonumber(tracked[6]) == 1
+            run(conn, "UPDATE bookorbit_stats_mirror SET generation=?,owned=? WHERE remote_key=?;",
+                { generation, still_owned and 1 or 0, item.key })
+            return false, false
+        end
+        -- The tracked row vanished: recreate it below instead of trusting stale
+        -- ownership metadata.
     end
 
+    local deleted_owned = false
     if tracked then
-        if deleteOwnedRow(conn, tracked) then touched[tonumber(tracked[1])] = true end
+        deleted_owned = deleteOwnedRow(conn, tracked)
+        if deleted_owned then touched[tonumber(tracked[1])] = true end
         run(conn, "DELETE FROM bookorbit_stats_mirror WHERE remote_key=?;", { item.key })
     end
 
@@ -283,7 +317,7 @@ local function applyItem(conn, item, generation, touched)
         VALUES(?,?,?,?,?,?,?,?,?,?);
     ]], { item.key, item.bookId, id_book, page, start_time, duration, total_pages, generation, owned and 1 or 0, item.kind })
     if owned then touched[id_book] = true end
-    return owned
+    return owned, owned or deleted_owned
 end
 
 local function refreshBookTotals(conn, touched)
@@ -306,23 +340,31 @@ function StatsMirror.applyPage(generation, items)
     if not ready then return nil, ready_err end
     local conn, err = openConn()
     if not conn then return nil, err end
-    local touched, inserted = {}, 0
     local ok, result = pcall(function()
         conn:exec("BEGIN IMMEDIATE;")
+        run(conn, "DELETE FROM bookorbit_stats_pending WHERE generation<>?;", { generation })
         for _, item in ipairs(items) do
-            if applyItem(conn, item, generation, touched) then inserted = inserted + 1 end
+            if not validItem(item) then error("invalid_mirror_item") end
+            run(conn, [[
+                INSERT OR REPLACE INTO bookorbit_stats_pending
+                    (remote_key,generation,kind,remote_book_id,hash,title,authors,pages,page,start_time,duration,total_pages)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?);
+            ]], {
+                item.key, generation, item.kind, item.bookId, item.hash:lower(), item.title, item.authors,
+                math.floor(item.pages), math.floor(item.page), math.floor(item.startTime),
+                math.floor(item.durationSeconds), math.floor(item.totalPages),
+            })
         end
-        refreshBookTotals(conn, touched)
         conn:exec("COMMIT;")
         return true
     end)
     if not ok then pcall(conn.exec, conn, "ROLLBACK;") end
     conn:close()
     if not ok then
-        logger.warn("BookOrbit: statistics mirror page failed:", result)
+        logger.warn("BookOrbit: statistics mirror page staging failed:", result)
         return nil, tostring(result)
     end
-    return { received = #items, inserted = inserted }
+    return { received = #items, inserted = 0, changed = false }
 end
 
 function StatsMirror.finishGeneration(generation)
@@ -331,9 +373,33 @@ function StatsMirror.finishGeneration(generation)
     if not ready then return nil, ready_err end
     local conn, err = openConn()
     if not conn then return nil, err end
-    local touched, removed = {}, 0
+    local touched, removed, inserted, changed_any = {}, 0, 0, false
     local ok, result = pcall(function()
         conn:exec("BEGIN IMMEDIATE;")
+        local pending_stmt = conn:prepare([[
+            SELECT remote_key,kind,remote_book_id,hash,title,authors,pages,page,start_time,duration,total_pages
+            FROM bookorbit_stats_pending WHERE generation=? ORDER BY remote_key;
+        ]])
+        pending_stmt:bind(generation)
+        local pending_rows = {}
+        for pending in pending_stmt:rows() do
+            table.insert(pending_rows, {
+                pending[1], pending[2], pending[3], pending[4], pending[5], pending[6],
+                pending[7], pending[8], pending[9], pending[10], pending[11],
+            })
+        end
+        pending_stmt:close()
+        for _, pending in ipairs(pending_rows) do
+            local owned, item_changed = applyItem(conn, {
+                key = pending[1], kind = pending[2], bookId = tonumber(pending[3]), hash = pending[4],
+                title = pending[5], authors = pending[6], pages = tonumber(pending[7]),
+                page = tonumber(pending[8]), startTime = tonumber(pending[9]),
+                durationSeconds = tonumber(pending[10]), totalPages = tonumber(pending[11]),
+            }, generation, touched)
+            if owned then inserted = inserted + 1 end
+            changed_any = changed_any or item_changed == true
+        end
+
         local stale = conn:prepare([[
             SELECT remote_key,id_book,page,start_time,duration,total_pages,owned
             FROM bookorbit_stats_mirror WHERE generation<>?;
@@ -351,6 +417,7 @@ function StatsMirror.finishGeneration(generation)
             if deleteOwnedRow(conn, values) then
                 touched[tonumber(tracked[2])] = true
                 removed = removed + 1
+                changed_any = true
             end
             run(conn, "DELETE FROM bookorbit_stats_mirror WHERE remote_key=?;", { tracked[1] })
         end
@@ -365,6 +432,7 @@ function StatsMirror.finishGeneration(generation)
         run(conn, "INSERT OR REPLACE INTO bookorbit_stats_meta(key,value) VALUES('last_generation',?);", { generation })
         local row_count = tonumber(conn:rowexec("SELECT count(*) FROM bookorbit_stats_mirror;")) or 0
         run(conn, "INSERT OR REPLACE INTO bookorbit_stats_meta(key,value) VALUES('last_row_count',?);", { tostring(row_count) })
+        run(conn, "DELETE FROM bookorbit_stats_pending WHERE generation=?;", { generation })
         conn:exec("COMMIT;")
         return true
     end)
@@ -374,7 +442,7 @@ function StatsMirror.finishGeneration(generation)
         logger.warn("BookOrbit: statistics mirror finalize failed:", result)
         return nil, tostring(result)
     end
-    return { removed = removed, changed = removed > 0 or next(touched) ~= nil }
+    return { removed = removed, inserted = inserted, changed = changed_any or next(touched) ~= nil }
 end
 
 function StatsMirror.invalidateConsumerCaches()

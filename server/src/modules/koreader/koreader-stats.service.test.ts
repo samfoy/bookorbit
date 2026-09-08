@@ -302,6 +302,26 @@ describe('KoreaderStatsService', () => {
     );
   });
 
+  it('rejects a continuation cursor when accessible-library scope changed', async () => {
+    const cursor = Buffer.from(
+      JSON.stringify({
+        version: 1,
+        generation: mirrorGeneration(),
+        scope: '0'.repeat(16),
+        pageMaxId: 12,
+        sessionMaxId: 34,
+        pageAfterId: 5,
+        sessionAfterId: 0,
+      }),
+      'utf8',
+    ).toString('base64url');
+
+    await expect(service.uploadPageStats(makeUser(), makeDto([], { cursor }))).rejects.toThrow(
+      'Statistics mirror library scope changed; restart without a cursor',
+    );
+    expect(pluginRepo.getStatisticsMirrorPage).not.toHaveBeenCalled();
+  });
+
   it('rejects a malformed mirror cursor before querying a page', async () => {
     await expect(service.uploadPageStats(makeUser(), makeDto([], { cursor: 'bm90LWpzb24' }))).rejects.toThrow('Invalid statistics mirror cursor');
     expect(pluginRepo.getStatisticsMirrorPage).not.toHaveBeenCalled();

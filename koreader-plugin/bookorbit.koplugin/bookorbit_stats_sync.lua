@@ -102,8 +102,9 @@ function StatsSync.run(opts)
                 fail(finalize_err or "database_finalize_failed")
                 return
             end
+            totals.inserted = finalized.inserted or 0
             totals.removed = finalized.removed or 0
-            if totals.inserted > 0 or totals.removed > 0 then
+            if finalized.changed == true then
                 StatsMirror.invalidateConsumerCaches()
             end
             finish(totals)

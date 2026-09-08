@@ -23,6 +23,7 @@ const DEFAULT_MIRROR_PAGE_SIZE = 100;
 interface MirrorCursor {
   version: 1;
   generation: string;
+  scope: string;
   pageMaxId: number;
   sessionMaxId: number;
   pageAfterId: number;
@@ -41,6 +42,8 @@ function decodeMirrorCursor(value: string): MirrorCursor {
       parsed.version !== 1 ||
       typeof parsed.generation !== 'string' ||
       !/^v[0-9]+-[A-Za-z0-9_-]+$/.test(parsed.generation) ||
+      typeof parsed.scope !== 'string' ||
+      !/^[a-f0-9]{16}$/.test(parsed.scope) ||
       fields.some((field) => !Number.isSafeInteger(field) || field! < 0)
     )
       throw new Error('invalid fields');
@@ -172,16 +175,23 @@ export class KoreaderStatsService {
     limit: number,
   ): Promise<KoreaderStatisticsMirrorPage> {
     const timeZone = resolveTimeZone((user.settings as unknown as UserSettings | undefined)?.timezone, 'UTC');
+    const scope = createHash('sha256')
+      .update(accessibleLibraryIds === null ? '*' : [...accessibleLibraryIds].sort((a, b) => a - b).join(','))
+      .digest('hex')
+      .slice(0, 16);
     let cursor: MirrorCursor;
     if (encodedCursor) {
       cursor = decodeMirrorCursor(encodedCursor);
+      if (cursor.scope !== scope) {
+        throw new BadRequestException('Statistics mirror library scope changed; restart without a cursor');
+      }
     } else {
       const bounds: StatisticsMirrorBounds = await this.pluginRepo.getStatisticsMirrorBounds(user.id, accessibleLibraryIds);
       const generation = `${bounds.generation}-${createHash('sha256').update(timeZone).digest('hex').slice(0, 8)}`;
       if (knownGeneration === generation) {
         return { generation, items: [], nextCursor: null, done: true };
       }
-      cursor = { version: 1, ...bounds, generation, pageAfterId: 0, sessionAfterId: 0 };
+      cursor = { version: 1, ...bounds, generation, scope, pageAfterId: 0, sessionAfterId: 0 };
     }
 
     const page = await this.pluginRepo.getStatisticsMirrorPage({
