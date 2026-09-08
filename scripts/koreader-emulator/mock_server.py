@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
@@ -88,7 +89,7 @@ class Handler(BaseHTTPRequestHandler):
         path = parsed.path
         query = parse_qs(parsed.query)
         if path.endswith("/koreader/plugin/version"):
-            self.send_json({"pluginVersion": "1.9.0", "serverVersion": "emulator", "capabilities": ["catalogStore", "catalogStorePhase2"]})
+            self.send_json({"pluginVersion": "2.0.0", "serverVersion": "emulator", "capabilities": ["catalogStore", "catalogStorePhase2", "statisticsMirror"]})
         elif path.endswith("/koreader/plugin/catalog/dashboard"):
             self.send_json(
                 {
@@ -202,7 +203,35 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json({"message": f"No fixture for {path}"}, 404)
 
     def do_POST(self) -> None:  # noqa: N802
-        if self.path.endswith("/koreader/plugin/match-check"):
+        if self.path.endswith("/koreader/plugin/page-stats"):
+            empty = os.environ.get("BOOKORBIT_EMULATOR_STATS_MODE") == "empty"
+            self.send_json(
+                {
+                    "results": [],
+                    "unmatched": [],
+                    "mirror": {
+                        "generation": "v1-0-0" if empty else "v1-0-1",
+                        "items": [] if empty else [
+                            {
+                                "key": "session:1",
+                                "kind": "session",
+                                "bookId": 9001,
+                                "hash": os.environ.get("BOOKORBIT_EMULATOR_STATS_HASH", "0123456789abcdef0123456789abcdef"),
+                                "title": "Unified Statistics Fixture",
+                                "authors": "BookOrbit Emulator",
+                                "pages": 100,
+                                "page": 5000,
+                                "startTime": 1788235200,
+                                "durationSeconds": 1800,
+                                "totalPages": 10000,
+                            }
+                        ],
+                        "nextCursor": None,
+                        "done": True,
+                    },
+                }
+            )
+        elif self.path.endswith("/koreader/plugin/match-check"):
             self.send_json({"matches": [], "libraryVersion": "emulator-v1"})
         elif self.path.endswith("/koreader/plugin/catalog/store/acquisitions"):
             self.send_json(

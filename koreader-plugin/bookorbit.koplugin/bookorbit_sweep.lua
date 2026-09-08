@@ -39,6 +39,7 @@ local BookOrbitSidecar = require("bookorbit_sidecar")
 local BookOrbitState = require("bookorbit_state")
 local BookOrbitStateManager = require("bookorbit_state_manager")
 local BookOrbitStatsReader = require("bookorbit_stats_reader")
+local BookOrbitStatsSync = require("bookorbit_stats_sync")
 
 -- The per-callback time budget is what protects responsiveness, so steps chain
 -- with a minimal delay. A fixed sleep between short slices would leave a large
@@ -246,6 +247,10 @@ local function finish(ctx, err)
     if ctx.interactive then
         local text = T(_("BookOrbit sync done: %1 books matched, %2 reading events, %3 highlights."),
             ctx.counts.books_matched, ctx.counts.page_stats, ctx.counts.annotations)
+        if (ctx.counts.stats_mirrored or 0) > 0 or (ctx.counts.stats_removed or 0) > 0 then
+            text = text .. "\n" .. T(_("KOReader statistics updated: %1 records, %2 removed."),
+                ctx.counts.stats_mirrored or 0, ctx.counts.stats_removed or 0)
+        end
         if ctx.highlight_summary and BookOrbitHighlightSummary.hasRemoteChanges(ctx.highlight_summary) then
             text = text .. "\n" .. T(_("Highlights updated: %1 applied, %2 deleted, %3 closed book(s)."),
                 ctx.highlight_summary.applied, ctx.highlight_summary.deleted, ctx.highlight_summary.touched_books)
@@ -1176,8 +1181,36 @@ local function stepDone(ctx)
         ctx.state.global.libraryVersionCheckedAt = os.time()
     end
 
-    ctx.state.global.lastSweepAt = os.time()
-    finish(ctx)
+    local completed = false
+    local function completeSweep()
+        if completed then return end
+        completed = true
+        ctx.state.global.lastSweepAt = os.time()
+        finish(ctx)
+    end
+    local started = BookOrbitStatsSync.run{
+        client = ctx.client,
+        cancelled = function() return aborted(ctx) end,
+        on_progress = function(totals)
+            setProgress(ctx, T(_("Syncing account statistics: %1 records"), totals.received or 0))
+        end,
+        on_finish = function(totals, mirror_err)
+            if totals then
+                ctx.counts.stats_mirrored = totals.inserted or 0
+                ctx.counts.stats_removed = totals.removed or 0
+                ctx.state.global.lastStatsMirrorAt = os.time()
+                ctx.state.global.lastStatsMirrorCount = totals.received or 0
+            elseif mirror_err ~= "unsupported_server" and mirror_err ~= "cancelled"
+                    and mirror_err ~= "statistics_disabled" and mirror_err ~= "already_running" then
+                ctx.had_errors = true
+                if ctx.plugin and ctx.plugin.recordSyncError then
+                    ctx.plugin:recordSyncError("statistics_mirror", mirror_err)
+                end
+            end
+            completeSweep()
+        end,
+    }
+    if not started and not completed then completeSweep() end
 end
 
 function BookOrbitSweep.run(opts)

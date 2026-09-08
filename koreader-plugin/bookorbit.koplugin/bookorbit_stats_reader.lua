@@ -12,6 +12,7 @@ writes to this database.
 local DataStorage = require("datastorage")
 local SQ3 = require("lua-ljsqlite3/init")
 local logger = require("logger")
+local BookOrbitStatsMirror = require("bookorbit_stats_mirror")
 
 local unpack = table.unpack or unpack
 
@@ -25,10 +26,18 @@ local MAX_CACHED_STATEMENTS = 16
 
 local BOOK_ROWS_SQL = "SELECT id, md5, title, authors, last_open FROM book"
     .. " WHERE md5 IS NOT NULL AND md5 != '' AND id > ? ORDER BY id LIMIT ?;"
+local BOOK_ROWS_FILTERED_SQL = "SELECT id, md5, title, authors, last_open FROM book"
+    .. " WHERE md5 IS NOT NULL AND md5 != '' AND id > ?"
+    .. " AND NOT EXISTS (SELECT 1 FROM bookorbit_stats_books m"
+    .. " WHERE m.id_book=book.id AND m.created_by_mirror=1) ORDER BY id LIMIT ?;"
 local BOOK_BY_MD5_SQL = "SELECT id, title, authors, last_open FROM book WHERE md5 = ?;"
 local BOOK_IDS_SQL = "SELECT id FROM book WHERE md5 = ?;"
 local LATEST_EVENTS_SQL = "SELECT id_book, MAX(start_time) FROM page_stat_data"
     .. " WHERE total_pages > 0 GROUP BY id_book;"
+local LATEST_EVENTS_FILTERED_SQL = "SELECT p.id_book, MAX(p.start_time) FROM page_stat_data p"
+    .. " WHERE p.total_pages > 0 AND NOT EXISTS (SELECT 1 FROM bookorbit_stats_mirror m"
+    .. " WHERE m.owned=1 AND m.id_book=p.id_book AND m.page=p.page AND m.start_time=p.start_time)"
+    .. " GROUP BY p.id_book;"
 
 local function metadataKey(title, authors)
     return (title or "") .. "\0" .. (authors or "")
@@ -80,7 +89,12 @@ Session.__index = Session
 function BookOrbitStatsReader.openSession()
     local conn = openConn() or openConn()
     if not conn then return nil, "open_failed" end
-    return setmetatable({ conn = conn, statements = {}, statement_count = 0 }, Session)
+    return setmetatable({
+        conn = conn,
+        statements = {},
+        statement_count = 0,
+        has_mirror = BookOrbitStatsMirror.hasOwnershipTable(conn),
+    }, Session)
 end
 
 function Session:close()
@@ -98,6 +112,7 @@ end
 function Session:_reopen()
     self:close()
     self.conn = openConn()
+    self.has_mirror = self.conn and BookOrbitStatsMirror.hasOwnershipTable(self.conn) or false
     return self.conn ~= nil
 end
 
@@ -143,7 +158,8 @@ end
 function Session:bookRowsAfter(after_id, limit)
     after_id = after_id or 0
     local rows = {}
-    local res = self:select(BOOK_ROWS_SQL, { after_id, limit })
+    local sql = self.has_mirror and BOOK_ROWS_FILTERED_SQL or BOOK_ROWS_SQL
+    local res = self:select(sql, { after_id, limit })
     if not res then return rows, after_id end
     for i = 1, #res[1] do
         local id = tonumber(res[1][i]) or 0
@@ -188,7 +204,7 @@ end
 -- event query. Returns nil when the query failed, so callers fall back to
 -- asking per book rather than silently skipping every book.
 function Session:latestEventTimes()
-    local res, err = self:select(LATEST_EVENTS_SQL)
+    local res, err = self:select(self.has_mirror and LATEST_EVENTS_FILTERED_SQL or LATEST_EVENTS_SQL)
     if err then return nil end
     local latest = {}
     if res then
@@ -199,14 +215,22 @@ function Session:latestEventTimes()
     return latest
 end
 
-local function eventsSql(count)
+local function eventsSql(count, exclude_mirror)
     local marks = {}
     for _ = 1, count do
         table.insert(marks, "?")
     end
-    return "SELECT page, start_time, duration, total_pages FROM page_stat_data"
-        .. " WHERE id_book IN (" .. table.concat(marks, ",") .. ")"
-        .. " AND start_time > ? AND total_pages > 0 ORDER BY start_time, page LIMIT ?;"
+    local alias = exclude_mirror and " p" or ""
+    local prefix = exclude_mirror and "p." or ""
+    local sql = "SELECT " .. prefix .. "page, " .. prefix .. "start_time, " .. prefix
+        .. "duration, " .. prefix .. "total_pages FROM page_stat_data" .. alias
+        .. " WHERE " .. prefix .. "id_book IN (" .. table.concat(marks, ",") .. ")"
+        .. " AND " .. prefix .. "start_time > ? AND " .. prefix .. "total_pages > 0"
+    if exclude_mirror then
+        sql = sql .. " AND NOT EXISTS (SELECT 1 FROM bookorbit_stats_mirror m"
+            .. " WHERE m.owned=1 AND m.id_book=p.id_book AND m.page=p.page AND m.start_time=p.start_time)"
+    end
+    return sql .. " ORDER BY " .. prefix .. "start_time, " .. prefix .. "page LIMIT ?;"
 end
 
 -- Events newer than the watermark across all statistics rows of a book,
@@ -221,7 +245,7 @@ function Session:eventsAfter(ids, watermark, limit)
     table.insert(params, limit)
 
     local events = {}
-    local res = self:select(eventsSql(#ids), params)
+    local res = self:select(eventsSql(#ids, self.has_mirror), params)
     if res then
         for i = 1, #res[1] do
             table.insert(events, {

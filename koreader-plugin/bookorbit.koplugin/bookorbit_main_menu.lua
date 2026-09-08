@@ -190,6 +190,11 @@ function MainMenu:diagnosticsRows()
 
     table.insert(rows, "----------------------------")
     table.insert(rows, { _("Auto sync"), formatBool(self.settings.auto_sync) })
+    table.insert(rows, { _("Account statistics sync"), formatBool(self.settings.statistics_sync) })
+    table.insert(rows, { _("Last statistics sync"),
+        formatTime(self.settings.last_statistics_sync and self.settings.last_statistics_sync.at) })
+    table.insert(rows, { _("Statistics records"),
+        tostring(self.settings.last_statistics_sync and self.settings.last_statistics_sync.received or 0) })
     table.insert(rows, { _("Two-way highlights & bookmarks"), formatBool(self.settings.annotation_sync) })
     table.insert(rows, { _("Open highlights"), open_highlight_text })
     table.insert(rows, { _("Highlight apply retry"), BookOrbitHighlightDiagnostics.retryText(self.open_highlight_retry_status) })
@@ -434,6 +439,19 @@ end
 function MainMenu:syncSettingsMenu(has_open_book)
     local items = {}
     table.insert(items, {
+        text = _("Sync account statistics into KOReader"),
+        checked_func = function() return self.settings.statistics_sync end,
+        help_text = _([[Keeps KOReader Reading statistics, SimpleUI statistics and Reading Insights aligned with all BookOrbit reading sessions, including other KOReader devices, web reading, Kobo, physical books and audiobooks.]]),
+        callback = function()
+            self.settings.statistics_sync = not self.settings.statistics_sync
+            G_reader_settings:flush()
+            self:registerEvents()
+            if self.settings.statistics_sync then
+                self:requestStatisticsMirror(false, "enabled", true)
+            end
+        end,
+    })
+    table.insert(items, {
         text = _("Skip auto-sync when offline"),
         checked_func = function() return self.settings.skip_sync_when_offline end,
         enabled_func = function() return self.settings.auto_sync end,
@@ -582,6 +600,15 @@ function MainMenu:addToMainMenu(menu_items)
             help_text = _([[Syncs reading data, highlights, status and progress for books that changed since the last sync. Use "Recheck all book matches" in diagnostics to re-verify every book against the server.]]),
             callback = function()
                 self:startSweep()
+            end,
+            separator = true,
+        })
+        table.insert(items, {
+            id = "sync_statistics",
+            text = _("Sync account statistics now"),
+            help_text = _([[Refreshes KOReader's statistics database from the complete BookOrbit account history without changing native KOReader rows.]]),
+            callback = function()
+                self:requestStatisticsMirror(true, "manual", true)
             end,
             separator = true,
         })

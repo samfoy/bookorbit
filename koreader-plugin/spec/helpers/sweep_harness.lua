@@ -78,6 +78,9 @@ local function installClient(handle)
     local responses = handle.responses
     return {
         isConfigured = function() return true end,
+        getPluginVersion = function()
+            return { pluginVersion = "2.0.0", serverVersion = "test", capabilities = {} }
+        end,
         matchCheck = function(_, hashes)
             table.insert(handle.calls.match, hashes)
             local matches = {}

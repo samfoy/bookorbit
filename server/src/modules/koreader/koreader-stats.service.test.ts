@@ -1,4 +1,5 @@
 import { BadRequestException, Logger } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { RequestUser } from '../../common/types/request-user';
@@ -17,12 +18,16 @@ const DEVICE_ID = 'abcdef12-3456-7890-abcd-ef1234567890';
 const HASH_A = 'a'.repeat(32);
 const HASH_B = 'b'.repeat(32);
 
+function mirrorGeneration(base = 'v2-test', timeZone = 'Asia/Kolkata'): string {
+  return `${base}-${createHash('sha256').update(timeZone).digest('hex').slice(0, 8)}`;
+}
+
 function makeUser(): RequestUser {
   return { id: 7, settings: { timezone: 'Asia/Kolkata' } } as unknown as RequestUser;
 }
 
-function makeDto(books: PageStatsUploadDto['books']): PageStatsUploadDto {
-  return { deviceId: DEVICE_ID, deviceModel: 'Kobo Libra 2', pluginVersion: '0.1.0', books } as PageStatsUploadDto;
+function makeDto(books: PageStatsUploadDto['books'], mirror?: PageStatsUploadDto['mirror']): PageStatsUploadDto {
+  return { deviceId: DEVICE_ID, deviceModel: 'Kobo Libra 2', pluginVersion: '0.1.0', books, mirror } as PageStatsUploadDto;
 }
 
 function makeSession(startEpoch: number): DerivedKoreaderSession {
@@ -42,7 +47,11 @@ describe('KoreaderStatsService', () => {
     resolveBookFilesByHashes: ReturnType<typeof vi.fn>;
     restoreDevice: ReturnType<typeof vi.fn>;
   };
-  let pluginRepo: { ingestAndDeriveForBook: ReturnType<typeof vi.fn> };
+  let pluginRepo: {
+    ingestAndDeriveForBook: ReturnType<typeof vi.fn>;
+    getStatisticsMirrorBounds: ReturnType<typeof vi.fn>;
+    getStatisticsMirrorPage: ReturnType<typeof vi.fn>;
+  };
   let achievementEvents: { emit: ReturnType<typeof vi.fn> };
   let service: KoreaderStatsService;
 
@@ -60,6 +69,26 @@ describe('KoreaderStatsService', () => {
       ingestAndDeriveForBook: vi
         .fn()
         .mockResolvedValue({ accepted: 2, duplicates: 0, insertedSessions: [], updatedSessions: [], deletedSessions: 0 }),
+      getStatisticsMirrorBounds: vi.fn().mockResolvedValue({ pageMaxId: 12, sessionMaxId: 34, generation: 'v2-test' }),
+      getStatisticsMirrorPage: vi.fn().mockResolvedValue({
+        rows: [
+          {
+            id: 34,
+            kind: 'session',
+            bookId: 20,
+            hash: HASH_A,
+            title: 'Dune',
+            authors: 'Frank Herbert',
+            pages: 412,
+            page: 9_903,
+            startTime: 1_700_000_000,
+            durationSeconds: 900,
+            totalPages: 10_000,
+          },
+        ],
+        pageAfterId: 12,
+        sessionAfterId: 34,
+      }),
     };
     achievementEvents = { emit: vi.fn() };
 
@@ -195,5 +224,86 @@ describe('KoreaderStatsService', () => {
 
     expect(koreaderRepo.resolveBookFilesByHashes).toHaveBeenCalledWith([HASH_A], [1], 7);
     expect(result.results[0]!.hash).toBe(HASH_A);
+  });
+
+  it('returns a frozen account-wide mirror page without requiring an upload', async () => {
+    const result = await service.uploadPageStats(makeUser(), makeDto([], { limit: 50 }));
+
+    expect(pluginRepo.getStatisticsMirrorBounds).toHaveBeenCalledWith(7, [1]);
+    expect(pluginRepo.getStatisticsMirrorPage).toHaveBeenCalledWith({
+      userId: 7,
+      accessibleLibraryIds: [1],
+      bounds: { pageMaxId: 12, sessionMaxId: 34, generation: mirrorGeneration() },
+      pageAfterId: 0,
+      sessionAfterId: 0,
+      limit: 50,
+    });
+    expect(result.mirror).toEqual({
+      generation: mirrorGeneration(),
+      items: [expect.objectContaining({ key: 'session:34', kind: 'session', title: 'Dune', durationSeconds: 900 })],
+      nextCursor: null,
+      done: true,
+    });
+    expect(pluginRepo.ingestAndDeriveForBook).not.toHaveBeenCalled();
+    expect(koreaderRepo.restoreDevice).not.toHaveBeenCalled();
+  });
+
+  it('short-circuits an unchanged completed mirror generation', async () => {
+    const generation = mirrorGeneration();
+    const result = await service.uploadPageStats(makeUser(), makeDto([], { knownGeneration: generation }));
+
+    expect(result.mirror).toEqual({ generation, items: [], nextCursor: null, done: true });
+    expect(pluginRepo.getStatisticsMirrorBounds).toHaveBeenCalledOnce();
+    expect(pluginRepo.getStatisticsMirrorPage).not.toHaveBeenCalled();
+  });
+
+  it('splits mirrored sessions at profile-timezone midnight without changing total duration', async () => {
+    const startedAt = new Date('2026-09-07T06:50:00.000Z');
+    const endedAt = new Date('2026-09-07T07:10:00.000Z');
+    pluginRepo.getStatisticsMirrorBounds.mockResolvedValueOnce({ pageMaxId: 12, sessionMaxId: 35, generation: 'v2-midnight' });
+    pluginRepo.getStatisticsMirrorPage.mockResolvedValueOnce({
+      rows: [
+        {
+          id: 35,
+          kind: 'session',
+          bookId: 20,
+          hash: HASH_A,
+          title: 'Dune',
+          authors: 'Frank Herbert',
+          pages: 412,
+          page: 5_000,
+          startTime: Math.floor(startedAt.getTime() / 1000),
+          endedAt,
+          durationSeconds: 1_200,
+          totalPages: 10_000,
+        },
+      ],
+      pageAfterId: 12,
+      sessionAfterId: 35,
+    });
+
+    const user = { ...makeUser(), settings: { timezone: 'America/Los_Angeles' } } as RequestUser;
+    const result = await service.uploadPageStats(user, makeDto([], { limit: 50 }));
+
+    expect(result.mirror?.items).toEqual([
+      expect.objectContaining({ key: 'session:35:0', startTime: Math.floor(startedAt.getTime() / 1000), durationSeconds: 600 }),
+      expect.objectContaining({
+        key: 'session:35:1',
+        startTime: Math.floor(new Date('2026-09-07T07:00:00.000Z').getTime() / 1000),
+        durationSeconds: 600,
+      }),
+    ]);
+    expect(result.mirror?.items.reduce((sum, item) => sum + item.durationSeconds, 0)).toBe(1_200);
+  });
+
+  it('rejects an empty upload that does not request a mirror page', async () => {
+    await expect(service.uploadPageStats(makeUser(), makeDto([]))).rejects.toThrow(
+      'At least one page-stat book or a statistics mirror request is required',
+    );
+  });
+
+  it('rejects a malformed mirror cursor before querying a page', async () => {
+    await expect(service.uploadPageStats(makeUser(), makeDto([], { cursor: 'bm90LWpzb24' }))).rejects.toThrow('Invalid statistics mirror cursor');
+    expect(pluginRepo.getStatisticsMirrorPage).not.toHaveBeenCalled();
   });
 });

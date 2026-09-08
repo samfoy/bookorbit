@@ -19,6 +19,9 @@ end
 local function load(respond, opts)
     local stats = FakeSqlite.install(respond, opts)
     package.loaded["bookorbit_stats_reader"] = nil
+    package.loaded["bookorbit_stats_mirror"] = {
+        hasOwnershipTable = function() return opts and opts.has_mirror == true end,
+    }
     return require("bookorbit_stats_reader"), stats
 end
 
@@ -137,6 +140,29 @@ do
     assertEqual(stats.closes, 1, "closing the session releases the connection")
 
     assertEqual(session:latestEventTimes(), nil, "a closed session answers nothing rather than reopening")
+end
+
+-- Mirror-owned rows are visible to dashboards/Insights but must never feed
+-- back into the outbound page-stats upload or local-library enumeration.
+do
+    local seen = {}
+    local Reader = load(function(sql)
+        table.insert(seen, sql)
+        if sql:find("FROM page_stat_data", 1, true) then return nil end
+        return nil
+    end, { has_mirror = true })
+    local session = Reader.openSession()
+    session:bookRowsAfter(0, 50)
+    session:latestEventTimes()
+    session:eventsAfter({ 7 }, 0, 50)
+    session:close()
+
+    assertEqual(seen[1]:find("bookorbit_stats_books", 1, true) ~= nil, true,
+        "mirror-created shadow books stay out of outbound enumeration")
+    assertEqual(seen[2]:find("bookorbit_stats_mirror", 1, true) ~= nil, true,
+        "latest-event preflight excludes mirror-owned rows")
+    assertEqual(seen[3]:find("bookorbit_stats_mirror", 1, true) ~= nil, true,
+        "event upload excludes mirror-owned rows")
 end
 
 print("bookorbit_stats_reader_test.lua: ok")

@@ -95,7 +95,7 @@ describe('KOReader plugin update source wiring', () => {
     const store = await readPluginFile('bookorbit_store.lua');
     const detail = await readPluginFile('bookorbit_catalog_detail.lua');
 
-    expect(main).toContain('local PLUGIN_VERSION = "1.9.0"');
+    expect(main).toContain('local PLUGIN_VERSION = "2.0.0"');
     expect(catalog).toContain('local BookOrbitStore = require("bookorbit_store")');
     expect(catalog).toContain('BookOrbitStore.install(BookOrbitCatalog)');
     expect(catalog).toContain('if self.nextStoreRequestGeneration then self:nextStoreRequestGeneration() end');
@@ -159,7 +159,9 @@ describe('KOReader plugin update source wiring', () => {
     expect(main).toContain('skip_progress = skip_progress');
     expect(main).toContain('event = "BookOrbitPullProgress"');
     expect(menu).not.toContain('text = _("Pull progress now")');
-    expect(main).toContain('self.onPageUpdate = self._onPageUpdate\n    if self.settings.auto_sync then');
+    expect(main).toContain('self.onPageUpdate = self._onPageUpdate');
+    expect(main).toContain('self.onCloseDocument = self.settings.auto_sync and self._onCloseDocument or nil');
+    expect(main).toContain('if self.settings.auto_sync or self.settings.statistics_sync then');
     expect(main).toContain('if self.settings.auto_sync and (self.periodic_push_scheduled');
 
     expect(bookSync).toContain('skip_progress = opts.skip_progress == true');

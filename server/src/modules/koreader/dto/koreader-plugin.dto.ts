@@ -121,13 +121,38 @@ export class PageStatsBookDto {
   events!: PageStatEventDto[];
 }
 
+export class StatisticsMirrorRequestDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(256)
+  @Matches(/^[A-Za-z0-9_-]+$/)
+  cursor?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  @Matches(/^v[0-9]+-[A-Za-z0-9_-]+$/)
+  knownGeneration?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(200)
+  limit?: number;
+}
+
 export class PageStatsUploadDto extends PluginDeviceDto {
   @IsArray()
-  @ArrayMinSize(1)
   @ArrayMaxSize(50)
   @ValidateNested({ each: true })
   @Type(() => PageStatsBookDto)
   books!: PageStatsBookDto[];
+
+  /** `books` may be empty only when this optional pull request is present. */
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => StatisticsMirrorRequestDto)
+  mirror?: StatisticsMirrorRequestDto;
 }
 
 export class KoreaderAnnotationDto {

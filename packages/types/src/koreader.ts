@@ -59,6 +59,30 @@ export interface KoreaderPluginTotals {
   unmatchedBooks: number;
 }
 
+/** One immutable row mirrored into KOReader's statistics.sqlite3. */
+export interface KoreaderStatisticsMirrorItem {
+  /** Stable server identity: `page:<id>` or `session:<id>`. */
+  key: string;
+  kind: "page" | "session";
+  bookId: number;
+  hash: string;
+  title: string;
+  authors: string;
+  pages: number;
+  page: number;
+  startTime: number;
+  durationSeconds: number;
+  totalPages: number;
+}
+
+/** A bounded page of a frozen account-wide statistics snapshot. */
+export interface KoreaderStatisticsMirrorPage {
+  generation: string;
+  items: KoreaderStatisticsMirrorItem[];
+  nextCursor: string | null;
+  done: boolean;
+}
+
 export interface KoreaderSyncStatus {
   credentials: KoreaderCredentials | null;
   devices: KoreaderDeviceInfo[];
@@ -395,7 +419,13 @@ export interface KoreaderCatalogManifestPage {
   restartRequired: boolean;
 }
 
-export type KoreaderPluginCapability = "catalogBulkManifest" | "catalogDashboardSections" | "catalogStore" | "catalogStorePhase2" | "bookmarkSync";
+export type KoreaderPluginCapability =
+  | "catalogBulkManifest"
+  | "catalogDashboardSections"
+  | "catalogStore"
+  | "catalogStorePhase2"
+  | "bookmarkSync"
+  | "statisticsMirror";
 
 export interface KoreaderPluginVersionInfo {
   pluginVersion: string;

@@ -92,6 +92,7 @@ settings.username = {lua(os.environ["BOOKORBIT_USERNAME"])}
 settings.userkey = {lua(os.environ["BOOKORBIT_USERKEY"])}
 settings.catalog_auto_open = "always"
 settings.skip_sync_when_offline = false
+settings.last_statistics_sync = nil
 G_reader_settings:saveSetting("bookorbit", settings)
 '''
 Path('/profile/patches/2-bookorbit-emulator.lua').write_text(patch)

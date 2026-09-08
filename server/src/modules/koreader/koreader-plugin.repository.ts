@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, desc, eq, gt, gte, inArray, like, lt, lte, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, gte, inArray, isNotNull, isNull, like, lt, lte, notInArray, or, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
+import { createHash } from 'node:crypto';
 
 import { DB } from '../../db';
 import * as schema from '../../db/schema';
@@ -39,6 +40,35 @@ export interface IngestPageStatsResult {
   insertedSessions: DerivedKoreaderSession[];
   updatedSessions: DerivedKoreaderSession[];
   deletedSessions: number;
+}
+
+export interface StatisticsMirrorBounds {
+  pageMaxId: number;
+  sessionMaxId: number;
+  generation: string;
+}
+
+export interface StatisticsMirrorRow {
+  id: number;
+  kind: 'page' | 'session';
+  bookId: number;
+  hash: string;
+  title: string;
+  authors: string;
+  pages: number;
+  page: number;
+  startTime: number;
+  endedAt?: Date;
+  durationSeconds: number;
+  totalPages: number;
+}
+
+const MIRRORED_SESSION_SOURCES = ['koreader', 'crosspoint'] as const;
+const SYNTHETIC_TOTAL_PAGES = 10_000;
+
+function numberValue(value: string | number | null | undefined): number {
+  const parsed = Number(value ?? 0);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 @Injectable()
@@ -234,6 +264,224 @@ export class KoreaderPluginRepository {
         deletedSessions: toDelete.length,
       };
     });
+  }
+
+  /**
+   * Freezes the two keyset domains used by a device mirror. Raw
+   * KOReader/Crosspoint events are exported losslessly; all other session
+   * sources are exported once as deterministic synthetic page rows.
+   */
+  async getStatisticsMirrorBounds(userId: number, accessibleLibraryIds: number[] | null): Promise<StatisticsMirrorBounds> {
+    if (accessibleLibraryIds !== null && accessibleLibraryIds.length === 0) {
+      return { pageMaxId: 0, sessionMaxId: 0, generation: 'v2-empty' };
+    }
+    const libraryFilter = accessibleLibraryIds ? inArray(schema.books.libraryId, accessibleLibraryIds) : undefined;
+    const sessionSourceFilter = or(isNull(schema.readingSessions.source), notInArray(schema.readingSessions.source, [...MIRRORED_SESSION_SOURCES]));
+    const [[page], [session], [catalog], [authorState]] = await Promise.all([
+      this.db
+        .select({
+          maxId: sql<number>`coalesce(max(${schema.koreaderPageStats.id}), 0)::int`,
+          rowCount: sql<string>`count(*)::text`,
+        })
+        .from(schema.koreaderPageStats)
+        .innerJoin(schema.bookFiles, eq(schema.bookFiles.id, schema.koreaderPageStats.bookFileId))
+        .innerJoin(schema.books, eq(schema.books.id, schema.bookFiles.bookId))
+        .where(and(eq(schema.koreaderPageStats.userId, userId), libraryFilter, isNotNull(schema.bookFiles.fileHash))),
+      this.db
+        .select({
+          maxId: sql<number>`coalesce(max(${schema.readingSessions.id}), 0)::int`,
+          rowCount: sql<string>`count(*)::text`,
+          durationSum: sql<string>`coalesce(sum(${schema.readingSessions.durationSeconds}), 0)::text`,
+          startedChecksum: sql<string>`coalesce(sum(extract(epoch from ${schema.readingSessions.startedAt})::numeric), 0)::text`,
+          endedChecksum: sql<string>`coalesce(sum(extract(epoch from ${schema.readingSessions.endedAt})::numeric), 0)::text`,
+          progressChecksum: sql<string>`coalesce(sum(coalesce(${schema.readingSessions.endProgress}, 0)::numeric), 0)::text`,
+        })
+        .from(schema.readingSessions)
+        .innerJoin(schema.books, eq(schema.books.id, schema.readingSessions.bookId))
+        .where(and(eq(schema.readingSessions.userId, userId), libraryFilter, sessionSourceFilter)),
+      this.db
+        .select({
+          bookCount: sql<string>`count(distinct ${schema.books.id})::text`,
+          fileCount: sql<string>`count(distinct ${schema.bookFiles.id})::text`,
+          fileChecksum: sql<string>`md5(coalesce(string_agg(${schema.bookFiles.id}::text || ':' || coalesce(${schema.bookFiles.fileHash}, ''), '|' order by ${schema.bookFiles.id}), ''))`,
+          booksUpdated: sql<string>`coalesce(max(${schema.books.updatedAt})::text, '')`,
+          filesUpdated: sql<string>`coalesce(max(${schema.bookFiles.updatedAt})::text, '')`,
+          metadataUpdated: sql<string>`coalesce(max(${schema.bookMetadata.updatedAt})::text, '')`,
+          physicalUpdated: sql<string>`coalesce(max(${schema.bookPhysicalCopies.updatedAt})::text, '')`,
+        })
+        .from(schema.books)
+        .leftJoin(schema.bookFiles, eq(schema.bookFiles.bookId, schema.books.id))
+        .leftJoin(schema.bookMetadata, eq(schema.bookMetadata.bookId, schema.books.id))
+        .leftJoin(schema.bookPhysicalCopies, and(eq(schema.bookPhysicalCopies.bookId, schema.books.id), eq(schema.bookPhysicalCopies.userId, userId)))
+        .where(libraryFilter),
+      this.db
+        .select({
+          relationCount: sql<string>`count(*)::text`,
+          checksum: sql<string>`md5(coalesce(string_agg(${schema.bookAuthors.bookId}::text || ':' || ${schema.bookAuthors.authorId}::text || ':' || ${schema.bookAuthors.displayOrder}::text || ':' || ${schema.authors.name}, '|' order by ${schema.bookAuthors.bookId}, ${schema.bookAuthors.displayOrder}, ${schema.bookAuthors.authorId}), ''))`,
+        })
+        .from(schema.bookAuthors)
+        .innerJoin(schema.authors, eq(schema.authors.id, schema.bookAuthors.authorId))
+        .innerJoin(schema.books, eq(schema.books.id, schema.bookAuthors.bookId))
+        .where(libraryFilter),
+    ]);
+    const pageMaxId = numberValue(page?.maxId);
+    const sessionMaxId = numberValue(session?.maxId);
+    const fingerprint = [
+      page?.rowCount,
+      pageMaxId,
+      session?.rowCount,
+      sessionMaxId,
+      session?.durationSum,
+      session?.startedChecksum,
+      session?.endedChecksum,
+      session?.progressChecksum,
+      catalog?.bookCount,
+      catalog?.fileCount,
+      catalog?.fileChecksum,
+      catalog?.booksUpdated,
+      catalog?.filesUpdated,
+      catalog?.metadataUpdated,
+      catalog?.physicalUpdated,
+      authorState?.relationCount,
+      authorState?.checksum,
+    ];
+    const generation = `v2-${createHash('sha256').update(JSON.stringify(fingerprint)).digest('hex').slice(0, 32)}`;
+    return { pageMaxId, sessionMaxId, generation };
+  }
+
+  async getStatisticsMirrorPage(params: {
+    userId: number;
+    accessibleLibraryIds: number[] | null;
+    bounds: StatisticsMirrorBounds;
+    pageAfterId: number;
+    sessionAfterId: number;
+    limit: number;
+  }): Promise<{ rows: StatisticsMirrorRow[]; pageAfterId: number; sessionAfterId: number }> {
+    const { userId, accessibleLibraryIds, bounds, limit } = params;
+    if ((accessibleLibraryIds !== null && accessibleLibraryIds.length === 0) || limit <= 0) {
+      return { rows: [], pageAfterId: bounds.pageMaxId, sessionAfterId: bounds.sessionMaxId };
+    }
+
+    let pageAfterId = params.pageAfterId;
+    let sessionAfterId = params.sessionAfterId;
+    const rows: StatisticsMirrorRow[] = [];
+    const libraryFilter = accessibleLibraryIds ? inArray(schema.books.libraryId, accessibleLibraryIds) : undefined;
+    const authorsExpr = sql<string>`coalesce((select string_agg(${schema.authors.name}, ', ' order by ${schema.bookAuthors.displayOrder}, ${schema.bookAuthors.authorId}) from ${schema.bookAuthors} inner join ${schema.authors} on ${schema.authors.id} = ${schema.bookAuthors.authorId} where ${schema.bookAuthors.bookId} = ${schema.books.id}), '')`;
+    const titleExpr = sql<string>`coalesce(nullif(${schema.bookMetadata.title}, ''), 'Book ' || ${schema.books.id}::text)`;
+    const pagesExpr = sql<number>`greatest(coalesce(${schema.bookPhysicalCopies.pageCount}, ${schema.bookMetadata.pageCount}, 100), 1)::int`;
+
+    if (pageAfterId < bounds.pageMaxId && rows.length < limit) {
+      const requested = limit - rows.length;
+      const pageRows = await this.db
+        .select({
+          id: schema.koreaderPageStats.id,
+          bookId: schema.books.id,
+          hash: schema.bookFiles.fileHash,
+          title: titleExpr,
+          authors: authorsExpr,
+          pages: pagesExpr,
+          page: schema.koreaderPageStats.page,
+          startTime: schema.koreaderPageStats.startTime,
+          durationSeconds: schema.koreaderPageStats.durationSeconds,
+          totalPages: schema.koreaderPageStats.totalPages,
+        })
+        .from(schema.koreaderPageStats)
+        .innerJoin(schema.bookFiles, eq(schema.bookFiles.id, schema.koreaderPageStats.bookFileId))
+        .innerJoin(schema.books, eq(schema.books.id, schema.bookFiles.bookId))
+        .leftJoin(schema.bookMetadata, eq(schema.bookMetadata.bookId, schema.books.id))
+        .leftJoin(schema.bookPhysicalCopies, and(eq(schema.bookPhysicalCopies.bookId, schema.books.id), eq(schema.bookPhysicalCopies.userId, userId)))
+        .where(
+          and(
+            eq(schema.koreaderPageStats.userId, userId),
+            libraryFilter,
+            isNotNull(schema.bookFiles.fileHash),
+            gt(schema.koreaderPageStats.id, pageAfterId),
+            lte(schema.koreaderPageStats.id, bounds.pageMaxId),
+          ),
+        )
+        .orderBy(schema.koreaderPageStats.id)
+        .limit(requested);
+      for (const row of pageRows) {
+        rows.push({
+          id: row.id,
+          kind: 'page',
+          bookId: row.bookId,
+          hash: row.hash!,
+          title: row.title,
+          authors: row.authors,
+          pages: numberValue(row.pages),
+          page: row.page,
+          startTime: numberValue(row.startTime),
+          durationSeconds: row.durationSeconds,
+          totalPages: row.totalPages,
+        });
+      }
+      if (pageRows.length > 0) pageAfterId = pageRows.at(-1)!.id;
+      if (pageRows.length < requested) pageAfterId = bounds.pageMaxId;
+    }
+
+    if (pageAfterId >= bounds.pageMaxId && sessionAfterId < bounds.sessionMaxId && rows.length < limit) {
+      const requested = limit - rows.length;
+      const sessionSourceFilter = or(isNull(schema.readingSessions.source), notInArray(schema.readingSessions.source, [...MIRRORED_SESSION_SOURCES]));
+      const hashExpr = sql<string>`coalesce(
+        (select ${schema.bookFiles.fileHash} from ${schema.bookFiles}
+          where ${schema.bookFiles.bookId} = ${schema.books.id} and ${schema.bookFiles.fileHash} is not null
+          order by case lower(coalesce(${schema.bookFiles.format}, '')) when 'epub' then 0 when 'pdf' then 1 else 2 end,
+                   case ${schema.bookFiles.role} when 'content' then 0 else 1 end,
+                   ${schema.bookFiles.id}
+          limit 1),
+        md5('bookorbit-book:' || ${schema.books.id}::text))`;
+      const sessionRows = await this.db
+        .select({
+          id: schema.readingSessions.id,
+          bookId: schema.books.id,
+          hash: hashExpr,
+          title: titleExpr,
+          authors: authorsExpr,
+          pages: pagesExpr,
+          startedAt: schema.readingSessions.startedAt,
+          endedAt: schema.readingSessions.endedAt,
+          durationSeconds: schema.readingSessions.durationSeconds,
+          endProgress: schema.readingSessions.endProgress,
+        })
+        .from(schema.readingSessions)
+        .innerJoin(schema.books, eq(schema.books.id, schema.readingSessions.bookId))
+        .leftJoin(schema.bookMetadata, eq(schema.bookMetadata.bookId, schema.books.id))
+        .leftJoin(schema.bookPhysicalCopies, and(eq(schema.bookPhysicalCopies.bookId, schema.books.id), eq(schema.bookPhysicalCopies.userId, userId)))
+        .where(
+          and(
+            eq(schema.readingSessions.userId, userId),
+            libraryFilter,
+            sessionSourceFilter,
+            gt(schema.readingSessions.id, sessionAfterId),
+            lte(schema.readingSessions.id, bounds.sessionMaxId),
+          ),
+        )
+        .orderBy(schema.readingSessions.id)
+        .limit(requested);
+      for (const row of sessionRows) {
+        const progressPage = Math.round(((row.endProgress ?? 0) / 100) * SYNTHETIC_TOTAL_PAGES);
+        const page = Math.max(1, Math.min(SYNTHETIC_TOTAL_PAGES, progressPage + (row.id % 7)));
+        rows.push({
+          id: row.id,
+          kind: 'session',
+          bookId: row.bookId,
+          hash: row.hash,
+          title: row.title,
+          authors: row.authors,
+          pages: numberValue(row.pages),
+          page,
+          startTime: Math.floor(row.startedAt.getTime() / 1000),
+          endedAt: row.endedAt,
+          durationSeconds: Math.min(Math.max(row.durationSeconds, 0), KOREADER_MAX_EVENT_DURATION_SECONDS),
+          totalPages: SYNTHETIC_TOTAL_PAGES,
+        });
+      }
+      if (sessionRows.length > 0) sessionAfterId = sessionRows.at(-1)!.id;
+      if (sessionRows.length < requested) sessionAfterId = bounds.sessionMaxId;
+    }
+
+    return { rows, pageAfterId, sessionAfterId };
   }
 
   /**

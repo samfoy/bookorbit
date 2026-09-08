@@ -504,6 +504,22 @@ function BookOrbitApi:uploadPageStats(books)
     return self:request("POST", "/koreader/plugin/page-stats", self:withDevice({ books = books }))
 end
 
+-- Pulls one page of the same account-wide statistics snapshot the server uses
+-- for Insights. This stays on the page-stats owner instead of creating a
+-- parallel transport; an omitted cursor starts a new frozen snapshot.
+function BookOrbitApi:syncStatisticsMirror(cursor, limit, known_generation)
+    local mirror = { limit = limit or 100 }
+    if cursor then
+        mirror.cursor = cursor
+    elseif known_generation then
+        mirror.knownGeneration = known_generation
+    end
+    return self:request("POST", "/koreader/plugin/page-stats", self:withDevice({
+        books = {},
+        mirror = mirror,
+    }))
+end
+
 -- Deprecated one-way upload, kept as fallback for pre-0.4 servers.
 function BookOrbitApi:uploadAnnotations(books)
     return self:request("POST", "/koreader/plugin/annotations", self:withDevice({ books = books }))

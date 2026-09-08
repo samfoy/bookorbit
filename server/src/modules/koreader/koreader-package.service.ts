@@ -26,6 +26,7 @@ const SERVER_CAPABILITIES: readonly KoreaderPluginCapability[] = [
   'catalogStore',
   'catalogStorePhase2',
   'bookmarkSync',
+  'statisticsMirror',
 ];
 
 @Injectable()

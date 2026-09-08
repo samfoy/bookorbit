@@ -41,6 +41,7 @@ local BookOrbitOpenAnnotationScheduler = require("bookorbit_open_annotation_sche
 local BookOrbitState = require("bookorbit_state")
 local BookOrbitStateManager = require("bookorbit_state_manager")
 local BookOrbitStatsReader = require("bookorbit_stats_reader")
+local BookOrbitStatsSync = require("bookorbit_stats_sync")
 local BookOrbitSyncCoordinator = require("bookorbit_sync_coordinator")
 local BookOrbitSyncJobRunner = require("bookorbit_sync_job_runner")
 local BookOrbitMainMenu = require("bookorbit_main_menu")
@@ -49,7 +50,7 @@ local BookOrbitProgressSync = require("bookorbit_progress_sync")
 local BookOrbitSweep = require("bookorbit_sweep")
 local BookOrbitUpdater = require("bookorbit_updater")
 
-local PLUGIN_VERSION = "1.9.0"
+local PLUGIN_VERSION = "2.0.0"
 
 local SYNC_STRATEGY = {
     PROMPT = 1,
@@ -72,6 +73,7 @@ local SYNC_JOB_PRIORITY = BookOrbitSyncCoordinator.PRIORITY
 local OPEN_ANNOTATION_SYNC_DELAY = 2
 local OPEN_HIGHLIGHT_RETRY_DELAY = 8
 local OPEN_HIGHLIGHT_MAX_RETRIES = 2
+local STATISTICS_MIRROR_INTERVAL = 6 * 3600
 
 local BookOrbit = WidgetContainer:extend{
     name = "bookorbit",
@@ -102,6 +104,7 @@ BookOrbit.default_settings = {
     auto_sync = false,
     skip_sync_when_offline = false,
     annotation_sync = true,
+    statistics_sync = true,
     pages_before_update = 10,
     sync_forward = SYNC_STRATEGY.PROMPT,
     sync_backward = SYNC_STRATEGY.DISABLE,
@@ -125,6 +128,10 @@ function BookOrbit:init()
     self.page_update_counter = 0
     self.periodic_push_scheduled = false
     self.provision_applied = false
+    self.statistics_mirror_task = function()
+        self:requestStatisticsMirror(false, "periodic")
+        UIManager:scheduleIn(STATISTICS_MIRROR_INTERVAL, self.statistics_mirror_task)
+    end
     self.periodic_push_task = function()
         self.periodic_push_scheduled = false
         self.page_update_counter = 0
@@ -169,6 +176,9 @@ function BookOrbit:init()
     if self.settings.annotation_sync == nil then
         self.settings.annotation_sync = true
     end
+    if self.settings.statistics_sync == nil then
+        self.settings.statistics_sync = true
+    end
     if self.settings.update_check_last_at == nil then
         self.settings.update_check_last_at = 0
     end
@@ -191,6 +201,8 @@ function BookOrbit:init()
         self:requestLifecycleOutboxDrain("startup")
         self:requestUpdateCheck(false, "startup")
         self:requestStoreCapability()
+        self:requestStatisticsMirror(false, "startup")
+        UIManager:scheduleIn(STATISTICS_MIRROR_INTERVAL, self.statistics_mirror_task)
     end)
 end
 
@@ -199,6 +211,75 @@ function BookOrbit:requestStoreCapability()
     self:runInSyncCoroutine(function()
         BookOrbitCapabilities.supports(self:newClient(), "catalogStore")
     end)
+end
+
+function BookOrbit:requestStatisticsMirror(interactive, source, force)
+    if not self.settings.statistics_sync or not self:isLoggedIn() then return false end
+    local last = self.settings.last_statistics_sync and tonumber(self.settings.last_statistics_sync.at) or 0
+    if not force and last > 0 and os.time() - last < STATISTICS_MIRROR_INTERVAL then return false end
+
+    local submit = function()
+        if not NetworkMgr:isConnected() then return end
+        self:submitSyncJob{
+            family = "statistics_mirror",
+            label = _("Statistics sync"),
+            source = source or "auto",
+            priority = interactive and SYNC_JOB_PRIORITY.manual or SYNC_JOB_PRIORITY.auto,
+            interactive = interactive == true,
+            async = true,
+            run = function(done)
+                local completed = false
+                local function complete(totals, err)
+                    if completed then return end
+                    completed = true
+                    if totals then
+                        self.settings.last_statistics_sync = {
+                            at = os.time(),
+                            received = totals.received or 0,
+                            inserted = totals.inserted or 0,
+                            removed = totals.removed or 0,
+                        }
+                        G_reader_settings:flush()
+                        if interactive then
+                            UIManager:show(InfoMessage:new{
+                                text = T(_("KOReader statistics synced: %1 records, %2 added, %3 removed."),
+                                    totals.received or 0, totals.inserted or 0, totals.removed or 0),
+                                timeout = 4,
+                            })
+                        end
+                    elseif err == "statistics_disabled" then
+                        if interactive then
+                            UIManager:show(InfoMessage:new{
+                                text = _("Enable KOReader Reading statistics before syncing account history."),
+                                timeout = 4,
+                            })
+                        end
+                    elseif err ~= "unsupported_server" and err ~= "cancelled" and err ~= "already_running" then
+                        self:recordSyncError("statistics_mirror", err)
+                        if interactive then
+                            UIManager:show(InfoMessage:new{
+                                text = T(_("Statistics sync failed: %1"), self:errorLabel(err)),
+                                timeout = 4,
+                            })
+                        end
+                    end
+                    done()
+                end
+                local started = BookOrbitStatsSync.run{
+                    client = self:newClient(),
+                    on_finish = complete,
+                }
+                if not started and not completed then complete(nil, "not_started") end
+            end,
+        }
+    end
+
+    if NetworkMgr:isConnected() then
+        submit()
+        return true
+    end
+    if interactive then NetworkMgr:runWhenConnected(submit) end
+    return false
 end
 
 local PROVISION_FILE = "bookorbit_provision.lua"
@@ -1224,6 +1305,8 @@ end
 
 function BookOrbit:_onResume()
     logger.dbg("BookOrbit: onResume")
+    self:requestStatisticsMirror(false, "resume")
+    if not self.settings.auto_sync then return end
     if Device:hasWifiRestore() and NetworkMgr.wifi_was_on and G_reader_settings:isTrue("auto_restore_wifi") then
         return
     end
@@ -1239,6 +1322,7 @@ function BookOrbit:_onSuspend()
     self.periodic_push_scheduled = false
     self:deferAutomaticUpdateCheck()
 
+    if not self.settings.auto_sync then return end
     if not self:isLoggedIn() then return end
     local snap = BookOrbitBookSync.capture(self)
     if not snap then return end
@@ -1249,9 +1333,11 @@ end
 function BookOrbit:_onNetworkConnected()
     logger.dbg("BookOrbit: onNetworkConnected")
     UIManager:scheduleIn(0.5, function()
-        if self:shouldSkipAutoSyncOffline("network_connected") then return end
-        self:requestLifecycleOutboxDrain("network_connected")
-        self:requestProgressPull(false, false, "network_connected")
+        self:requestStatisticsMirror(false, "network_connected")
+        if self.settings.auto_sync and not self:shouldSkipAutoSyncOffline("network_connected") then
+            self:requestLifecycleOutboxDrain("network_connected")
+            self:requestProgressPull(false, false, "network_connected")
+        end
         self:requestUpdateCheck(false, "network_connected")
     end)
 end
@@ -1312,18 +1398,16 @@ end
 
 function BookOrbit:registerEvents()
     self.onPageUpdate = self._onPageUpdate
-    if self.settings.auto_sync then
-        self.onCloseDocument = self._onCloseDocument
+    self.onCloseDocument = self.settings.auto_sync and self._onCloseDocument or nil
+    self.onNetworkDisconnecting = self.settings.auto_sync and self._onNetworkDisconnecting or nil
+    if self.settings.auto_sync or self.settings.statistics_sync then
         self.onResume = self._onResume
         self.onSuspend = self._onSuspend
         self.onNetworkConnected = self._onNetworkConnected
-        self.onNetworkDisconnecting = self._onNetworkDisconnecting
     else
-        self.onCloseDocument = nil
         self.onResume = nil
         self.onSuspend = nil
         self.onNetworkConnected = nil
-        self.onNetworkDisconnecting = nil
     end
 end
 
@@ -1331,6 +1415,10 @@ function BookOrbit:onCloseWidget()
     if self.periodic_push_task then
         UIManager:unschedule(self.periodic_push_task)
         self.periodic_push_task = nil
+    end
+    if self.statistics_mirror_task then
+        UIManager:unschedule(self.statistics_mirror_task)
+        self.statistics_mirror_task = nil
     end
 end
 

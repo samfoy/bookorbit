@@ -79,6 +79,7 @@ local function newPlugin(logged_in)
         SYNC_STRATEGY = { PROMPT = 1, SILENT = 2, DISABLE = 3 },
         settings = {
             auto_sync = true,
+            statistics_sync = true,
             annotation_sync = true,
             skip_sync_when_offline = false,
             sync_forward = 1,
@@ -117,16 +118,17 @@ assertEqual(hasItem(dashboard_items, "Account & setup"), true, "dashboard setup 
 
 plugin = newPlugin(true)
 items = menuItems(plugin)
-assertEqual(#items, 5, "file manager menu has dashboard, store, global sync, settings and setup rows")
+assertEqual(#items, 6, "file manager menu has dashboard, store, both global sync actions, settings and setup rows")
 assertItemText(items, 1, "Open dashboard", "file manager order starts with dashboard")
 assertItemText(items, 2, "Book Store", "file manager exposes the native store")
 assertItemText(items, 3, "Sync all books now", "file manager order keeps global sync after discovery")
-assertItemText(items, 4, "Settings", "file manager order keeps settings fourth")
-assertItemText(items, 5, "Account & setup", "file manager order ends with setup")
+assertItemText(items, 4, "Sync account statistics now", "file manager exposes explicit statistics refresh")
+assertItemText(items, 5, "Settings", "file manager order keeps settings after sync actions")
+assertItemText(items, 6, "Account & setup", "file manager order ends with setup")
 assertSeparator(items, 1, true, "file manager dashboard ends dashboard group")
 assertSeparator(items, 3, true, "file manager sync all ends global sync group")
-assertSeparator(items, 4, true, "file manager settings ends settings group")
-assertSeparator(items, 5, false, "file manager setup has no trailing separator")
+assertSeparator(items, 5, true, "file manager settings ends settings group")
+assertSeparator(items, 6, false, "file manager setup has no trailing separator")
 assertEqual(hasItem(items, "Open dashboard"), true, "logged-in menu shows dashboard")
 assertEqual(hasItem(items, "Book Store"), true, "logged-in menu shows native store")
 
@@ -163,6 +165,7 @@ assertEqual(hasItem(file_manager_dashboard_settings.sub_item_table, "Reset to De
 local file_manager_sync_settings = findItem(file_manager_settings.sub_item_table, "Sync")
 assertEqual(hasItem(file_manager_sync_settings.sub_item_table, "Auto sync current book"), false, "file manager sync settings hides reader auto sync")
 assertEqual(hasItem(file_manager_sync_settings.sub_item_table, "Two-way highlights & bookmarks"), true, "file manager sync settings has the two-way toggle")
+assertEqual(hasItem(file_manager_sync_settings.sub_item_table, "Sync account statistics into KOReader"), true, "file manager sync settings has account statistics toggle")
 assertEqual(hasItem(file_manager_sync_settings.sub_item_table, "Skip auto-sync when offline"), true, "file manager sync settings has offline skip toggle")
 assertEqual(hasItem(file_manager_sync_settings.sub_item_table, "Open dashboard on startup (Off)"), false, "file manager sync settings excludes dashboard startup")
 local file_manager_plugin_settings = findItem(file_manager_settings.sub_item_table, "Plugin")
@@ -173,12 +176,13 @@ assertEqual(hasItem(dashboard_items, "Open dashboard"), false, "dashboard mirror
 assertItemText(dashboard_items, 1, "Installed plugin: current", "dashboard mirror promotes update row first")
 assertItemText(dashboard_items, 2, "Book Store", "dashboard mirror exposes native store second")
 assertItemText(dashboard_items, 3, "Sync all books now", "dashboard mirror keeps sync all third")
-assertItemText(dashboard_items, 4, "Settings", "dashboard mirror keeps settings fourth")
-assertItemText(dashboard_items, 5, "Account & setup", "dashboard mirror keeps setup fifth")
+assertItemText(dashboard_items, 4, "Sync account statistics now", "dashboard mirror keeps statistics sync fourth")
+assertItemText(dashboard_items, 5, "Settings", "dashboard mirror keeps settings fifth")
+assertItemText(dashboard_items, 6, "Account & setup", "dashboard mirror keeps setup sixth")
 assertSeparator(dashboard_items, 1, true, "dashboard mirror update row ends update group")
 assertSeparator(dashboard_items, 3, true, "dashboard mirror sync all ends global sync group")
-assertSeparator(dashboard_items, 4, true, "dashboard mirror settings ends settings group")
-assertSeparator(dashboard_items, 5, false, "dashboard mirror setup has no trailing separator")
+assertSeparator(dashboard_items, 5, true, "dashboard mirror settings ends settings group")
+assertSeparator(dashboard_items, 6, false, "dashboard mirror setup has no trailing separator")
 assertEqual(hasItem(dashboard_items, "Sync all books now"), true, "dashboard mirror keeps sync all")
 assertEqual(hasItem(dashboard_items, "Installed plugin: current"), true, "dashboard mirror top level shows update row")
 assertEqual(hasItem(dashboard_items, "Account & setup"), true, "dashboard mirror keeps account setup")
@@ -198,20 +202,21 @@ assertEqual(hasItem(dashboard_settings.sub_item_table, "Plugin"), false, "dashbo
 
 plugin.ui = { document = {} }
 items = menuItems(plugin)
-assertEqual(#items, 7, "reader menu has dashboard, store, current-book, auto-sync, global sync, settings and setup rows")
+assertEqual(#items, 8, "reader menu has dashboard, store, current-book, auto-sync, both global sync actions, settings and setup rows")
 assertItemText(items, 1, "Open dashboard", "reader order starts with dashboard")
 assertItemText(items, 2, "Book Store", "reader order exposes native store second")
 assertItemText(items, 3, "Sync current book now", "reader order keeps current book sync third")
 assertItemText(items, 4, "Auto sync current book", "reader order keeps auto sync fourth")
 assertItemText(items, 5, "Sync all books now", "reader order keeps sync all fifth")
-assertItemText(items, 6, "Settings", "reader order keeps settings sixth")
-assertItemText(items, 7, "Account & setup", "reader order ends with setup")
+assertItemText(items, 6, "Sync account statistics now", "reader order keeps statistics sync sixth")
+assertItemText(items, 7, "Settings", "reader order keeps settings seventh")
+assertItemText(items, 8, "Account & setup", "reader order ends with setup")
 assertSeparator(items, 1, true, "reader dashboard ends dashboard group")
 assertSeparator(items, 3, false, "reader current book sync stays in sync action group")
 assertSeparator(items, 4, true, "reader auto sync ends current-book group")
 assertSeparator(items, 5, true, "reader sync all ends sync action group")
-assertSeparator(items, 6, true, "reader settings ends settings group")
-assertSeparator(items, 7, false, "reader setup has no trailing separator")
+assertSeparator(items, 7, true, "reader settings ends settings group")
+assertSeparator(items, 8, false, "reader setup has no trailing separator")
 assertEqual(hasItem(items, "Current book"), false, "reader menu flattens current book actions")
 assertEqual(hasItem(items, "Sync current book now"), true, "reader menu has manual book sync")
 assertEqual(hasItem(items, "Auto sync current book"), true, "reader top level has auto sync")
@@ -229,6 +234,7 @@ assertEqual(hasItem(reader_dashboard_settings.sub_item_table, "Open dashboard on
 local sync_settings = findItem(settings.sub_item_table, "Sync")
 assertEqual(hasItem(sync_settings.sub_item_table, "Auto sync current book"), false, "reader sync settings excludes top-level auto sync")
 assertEqual(hasItem(sync_settings.sub_item_table, "Two-way highlights & bookmarks"), true, "sync settings has the two-way toggle")
+assertEqual(hasItem(sync_settings.sub_item_table, "Sync account statistics into KOReader"), true, "sync settings has account statistics toggle")
 assertEqual(hasItem(sync_settings.sub_item_table, "Skip auto-sync when offline"), true, "sync settings has offline toggle")
 assertEqual(hasItem(sync_settings.sub_item_table, "Open dashboard on startup (Off)"), false, "sync settings excludes dashboard startup")
 assertEqual(hasItem(items, "Two-way highlights & bookmarks"), false, "top level hides the two-way toggle")
@@ -243,8 +249,9 @@ assertEqual(hasItem(reader_dashboard_items, "Auto sync current book"), false, "d
 assertItemText(reader_dashboard_items, 1, "Installed plugin: current", "reader dashboard mirror promotes update row first")
 assertItemText(reader_dashboard_items, 2, "Book Store", "reader dashboard mirror exposes native store second")
 assertItemText(reader_dashboard_items, 3, "Sync all books now", "reader dashboard mirror keeps sync all third")
-assertItemText(reader_dashboard_items, 4, "Settings", "reader dashboard mirror keeps settings fourth")
-assertItemText(reader_dashboard_items, 5, "Account & setup", "reader dashboard mirror keeps setup fifth")
+assertItemText(reader_dashboard_items, 4, "Sync account statistics now", "reader dashboard mirror keeps statistics sync fourth")
+assertItemText(reader_dashboard_items, 5, "Settings", "reader dashboard mirror keeps settings fifth")
+assertItemText(reader_dashboard_items, 6, "Account & setup", "reader dashboard mirror keeps setup sixth")
 
 plugin.settings.annotation_sync = false
 plugin.settings.auto_sync = false

@@ -1,9 +1,10 @@
 --[[--
 Persistent local sync state for the BookOrbit plugin.
 
-This LuaSettings file is the plugin's only local database. Matched books carry
-full watermark records, unmatched hashes only a last-checked timestamp, so
-thousands of unmatched books stay cheap. statistics.sqlite3 is never written.
+This LuaSettings file holds network watermarks and file mappings. Unified
+account history is mirrored separately into statistics.sqlite3 by
+bookorbit_stats_mirror.lua, whose ownership tables ensure native KOReader rows
+are never updated or deleted.
 ]]
 
 local DataStorage = require("datastorage")
